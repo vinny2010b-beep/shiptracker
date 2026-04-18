@@ -161,14 +161,24 @@ function startSSE(){
   };
 
   ws.onmessage=function(e){
+    // Count every frame including binary and status
+    var rc=document.getElementById('st-raw');
+    if(rc)rc.textContent=parseInt(rc.textContent||0)+1;
     if(typeof e.data!=='string')return;
     var raw=e.data.trim();
     if(!raw||raw.charAt(0)!=='{')return;
     try{
       var msg=JSON.parse(raw);
+      // Show first 3 non-status messages in console for debugging
+      if(!msg._status&&!msg.error){console.log('AIS msg:',JSON.stringify(msg).substring(0,200));}
       if(msg._status){
-        var sm={'proxy_ready':'proxy ready','upstream_connected':'aisstream connected','data_flowing':'data flowing!','upstream_closed':'upstream closed','upstream_error':'upstream error'};
+        var sm={'upstream_connecting':'connecting…','proxy_ready':'proxy ready','upstream_connected':'aisstream ✓','data_flowing':'data flowing!','upstream_reconnecting':'reconnecting…','upstream_closed':'upstream closed','upstream_error':'upstream error'};
         setStatus('live',sm[msg._status]||msg._status);
+        // Resend subscription whenever upstream reconnects
+        if(msg._status==='upstream_connected'&&ws&&ws.readyState===WebSocket.OPEN){
+          ws.send(JSON.stringify({BoundingBoxes:[selBBox],FilterMessageTypes:['PositionReport','StandardClassBPositionReport','ExtendedClassBPositionReport','ShipStaticData']}));
+          console.log('Subscription resent after upstream connect');
+        }
         if(msg._status==='upstream_error'||msg._status==='upstream_closed'){showApiErr('Server: '+msg._status+(msg.msg?' — '+msg.msg:''));}
         return;
       }
