@@ -172,7 +172,7 @@ function startSSE(){
 
   ws.onerror=function(){setStatus('err','error')};
   ws.onclose=function(){
-    setStatus('disconnected','disconnecting…');
+    setStatus('disconnected','disconnected');
     var pd=document.getElementById('pulse-dot');if(pd)pd.style.display='none';
     // Auto-reconnect after 3s
     setTimeout(function(){if(ws===null)return;startSSE();},3000);
