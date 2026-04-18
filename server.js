@@ -29,8 +29,8 @@ wss.on('connection', (browser, req) => {
     }
   });
 
-  upstream.on('message', (data) => {
-    if (browser.readyState === WebSocket.OPEN) browser.send(data);
+  upstream.on('message', (data, isBinary) => {
+    if (browser.readyState === WebSocket.OPEN) browser.send(isBinary ? data : data.toString());
   });
 
   upstream.on('close', (code, reason) => {
