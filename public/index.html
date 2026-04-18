@@ -161,8 +161,8 @@ function startSSE(){
   };
 
   ws.onmessage=function(e){
-    var raw=(e.data||'').trim();
-    if(!raw||raw.charAt(0)!=='{')return;
+    var raw=(typeof e.data==='string'?e.data:String(e.data||'')).trim();
+    if(!raw||raw.length===0||raw.charAt(0)!=='{')return;
     try{
       var msg=JSON.parse(raw);
       if(msg.error){showApiErr('API error: '+msg.error);return}
