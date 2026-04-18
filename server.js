@@ -14,11 +14,19 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 wss.on('connection', (browser, req) => {
-  console.log('[proxy] browser connected from', req.socket.remoteAddress);
+  console.log('[proxy] browser connected');
+
   const upstream = new WebSocket('wss://stream.aisstream.io/v0/stream');
+  let pendingSub = null; // queue subscription if upstream not ready yet
 
   upstream.on('open', () => {
-    console.log('[proxy] upstream aisstream.io connected');
+    console.log('[proxy] upstream connected');
+    // If browser already sent subscription, send it now
+    if (pendingSub) {
+      upstream.send(pendingSub);
+      console.log('[proxy] sent queued subscription');
+      pendingSub = null;
+    }
   });
 
   upstream.on('message', (data) => {
@@ -37,12 +45,17 @@ wss.on('connection', (browser, req) => {
   browser.on('message', (raw) => {
     try {
       const msg = JSON.parse(raw);
-      // Inject the API key server-side so it's never exposed in browser source
       msg.APIKey = API_KEY;
       msg.Apikey = API_KEY;
+      const toSend = JSON.stringify(msg);
+
       if (upstream.readyState === WebSocket.OPEN) {
-        upstream.send(JSON.stringify(msg));
-        console.log('[proxy] subscription forwarded:', JSON.stringify(msg).substring(0, 100));
+        upstream.send(toSend);
+        console.log('[proxy] subscription forwarded');
+      } else {
+        // Upstream not ready yet — queue it
+        pendingSub = toSend;
+        console.log('[proxy] subscription queued (upstream not ready)');
       }
     } catch (e) {
       console.error('[proxy] bad browser message:', e.message);
