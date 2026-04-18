@@ -154,7 +154,7 @@ function startSSE(){
 
   ws.onopen=function(){
     setStatus('live','live');
-    document.getElementById('pulse').style.display='inline-block';
+    var pd=document.getElementById('pulse-dot');if(pd)pd.style.display='inline-block';
     // Send subscription — server injects the API key
     ws.send(JSON.stringify({BoundingBoxes:[selBBox],FilterMessageTypes:['PositionReport','StandardClassBPositionReport','ExtendedClassBPositionReport','ShipStaticData']}));
     hideApiErr();
@@ -173,7 +173,7 @@ function startSSE(){
   ws.onerror=function(){setStatus('err','error')};
   ws.onclose=function(){
     setStatus('disconnected','disconnecting…');
-    document.getElementById('pulse').style.display='none';
+    var pd=document.getElementById('pulse-dot');if(pd)pd.style.display='none';
     // Auto-reconnect after 3s
     setTimeout(function(){if(ws===null)return;startSSE();},3000);
   };
@@ -198,8 +198,8 @@ function speedClass(s){if(s==null||s<0.5)return 'spd-stop';if(s<5)return 'spd-sl
 
 function doConnect(){
   hideErr();
-  document.getElementById('setup').style.display='none';
-  document.getElementById('dashboard').style.display='flex';
+  var _s=document.getElementById('setup');if(_s)_s.style.display='none';
+  var _d=document.getElementById('dashboard');if(_d)_d.style.display='flex';
   document.getElementById('topbar-region').textContent=selRegion;
 
   if(!mapInst){
@@ -228,8 +228,8 @@ function doDisconnect(){
   document.getElementById('tbl-body').innerHTML='';
   document.getElementById('st-vessels').textContent='0';
   document.getElementById('st-msgs').textContent='0';
-  document.getElementById('dashboard').style.display='none';
-  document.getElementById('setup').style.display='flex';
+  var _d=document.getElementById('dashboard');if(_d)_d.style.display='none';
+  var _s=document.getElementById('setup');if(_s)_s.style.display='flex';
   hideApiErr();
 }
 
