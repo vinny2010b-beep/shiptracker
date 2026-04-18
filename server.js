@@ -12,100 +12,94 @@ const wss    = new WebSocketServer({ server, path: '/ws' });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Health check — visit /health to verify server can reach aisstream.io
 app.get('/health', (req, res) => {
   const test = new WebSocket('wss://stream.aisstream.io/v0/stream');
-  const result = { server: 'ok', aisstream: 'connecting', time: new Date().toISOString() };
-  const timer = setTimeout(() => {
-    test.close();
-    result.aisstream = 'timeout';
-    res.json(result);
-  }, 8000);
+  let done = false;
+  const finish = (result) => { if (!done) { done = true; test.terminate(); res.json(result); } };
+  setTimeout(() => finish({ server: 'ok', aisstream: 'timeout_8s' }), 8000);
   test.on('open', () => {
-    result.aisstream = 'connected';
     test.send(JSON.stringify({ APIKey: API_KEY, BoundingBoxes: [[[-90,-180],[90,180]]], FilterMessageTypes: ['PositionReport'] }));
+    finish({ server: 'ok', aisstream: 'connected_and_subscribed' });
   });
-  test.on('message', () => {
-    clearTimeout(timer);
-    result.aisstream = 'data_flowing';
-    test.close();
-    res.json(result);
-  });
-  test.on('error', (e) => {
-    clearTimeout(timer);
-    result.aisstream = 'error: ' + e.message;
-    res.json(result);
-  });
+  test.on('message', () => finish({ server: 'ok', aisstream: 'DATA_FLOWING' }));
+  test.on('error', (e) => finish({ server: 'ok', aisstream: 'error: ' + e.message }));
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
+function send(ws, obj) {
+  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
 wss.on('connection', (browser) => {
   console.log('[proxy] browser connected');
 
-  // Tell browser the proxy is ready
-  browser.send(JSON.stringify({ _status: 'proxy_ready' }));
+  let upstream = null;
+  let lastSub  = null;
+  let retryMs  = 2000;
+  let alive    = true;
 
-  const upstream = new WebSocket('wss://stream.aisstream.io/v0/stream');
-  let pendingSub = null;
-  let msgCount = 0;
+  function connectUpstream() {
+    if (!alive) return;
+    console.log('[proxy] connecting to aisstream.io...');
+    send(browser, { _status: 'upstream_connecting' });
 
-  upstream.on('open', () => {
-    console.log('[proxy] upstream connected to aisstream.io');
-    browser.send(JSON.stringify({ _status: 'upstream_connected' }));
-    if (pendingSub) {
-      upstream.send(pendingSub);
-      console.log('[proxy] sent queued subscription');
-      pendingSub = null;
-    }
-  });
+    upstream = new WebSocket('wss://stream.aisstream.io/v0/stream');
 
-  upstream.on('message', (data, isBinary) => {
-    msgCount++;
-    if (msgCount === 1) {
-      console.log('[proxy] first AIS message received — data is flowing');
-      browser.send(JSON.stringify({ _status: 'data_flowing' }));
-    }
-    if (browser.readyState === WebSocket.OPEN) {
-      browser.send(isBinary ? data : data.toString());
-    }
-  });
+    upstream.on('open', () => {
+      console.log('[proxy] upstream open');
+      retryMs = 2000; // reset backoff
+      send(browser, { _status: 'upstream_connected' });
+      if (lastSub) {
+        upstream.send(lastSub);
+        console.log('[proxy] subscription sent');
+      }
+    });
 
-  upstream.on('close', (code, reason) => {
-    console.log('[proxy] upstream closed', code, reason.toString());
-    browser.send(JSON.stringify({ _status: 'upstream_closed', code }));
-    if (browser.readyState === WebSocket.OPEN) browser.close();
-  });
+    upstream.on('message', (data, isBinary) => {
+      if (browser.readyState === WebSocket.OPEN) {
+        browser.send(isBinary ? data : data.toString());
+      }
+    });
 
-  upstream.on('error', (err) => {
-    console.error('[proxy] upstream error:', err.message);
-    browser.send(JSON.stringify({ _status: 'upstream_error', msg: err.message }));
-  });
+    upstream.on('close', (code, reason) => {
+      console.log('[proxy] upstream closed', code, reason.toString());
+      send(browser, { _status: 'upstream_reconnecting', code });
+      // Reconnect upstream — don't kill browser connection
+      if (alive) {
+        retryMs = Math.min(retryMs * 2, 30000); // exponential backoff up to 30s
+        setTimeout(connectUpstream, retryMs);
+      }
+    });
+
+    upstream.on('error', (err) => {
+      console.error('[proxy] upstream error:', err.message);
+      send(browser, { _status: 'upstream_error', msg: err.message });
+    });
+  }
 
   browser.on('message', (raw) => {
     try {
       const msg = JSON.parse(raw.toString());
       msg.APIKey = API_KEY;
       msg.Apikey = API_KEY;
-      const toSend = JSON.stringify(msg);
-      if (upstream.readyState === WebSocket.OPEN) {
-        upstream.send(toSend);
-        console.log('[proxy] subscription forwarded to aisstream.io');
-      } else {
-        pendingSub = toSend;
-        console.log('[proxy] subscription queued — upstream state:', upstream.readyState);
+      lastSub = JSON.stringify(msg); // save for reconnects
+      if (upstream && upstream.readyState === WebSocket.OPEN) {
+        upstream.send(lastSub);
+        console.log('[proxy] subscription forwarded');
       }
     } catch (e) {
-      console.error('[proxy] bad browser message:', e.message);
+      console.error('[proxy] bad message:', e.message);
     }
   });
 
   browser.on('close', () => {
-    console.log('[proxy] browser disconnected, total AIS msgs relayed:', msgCount);
-    if (upstream.readyState !== WebSocket.CLOSED) upstream.close();
+    console.log('[proxy] browser disconnected');
+    alive = false;
+    if (upstream) upstream.terminate();
   });
+
+  connectUpstream();
 });
 
-server.listen(PORT, () => {
-  console.log(`Ship tracker running on http://localhost:${PORT}`);
-});
+server.listen(PORT, () => console.log(`Ship tracker on http://localhost:${PORT}`));
