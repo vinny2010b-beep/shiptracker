@@ -161,11 +161,17 @@ function startSSE(){
   };
 
   ws.onmessage=function(e){
-    if(typeof e.data!=='string')return; // skip binary/blob frames
+    if(typeof e.data!=='string')return;
     var raw=e.data.trim();
     if(!raw||raw.charAt(0)!=='{')return;
     try{
       var msg=JSON.parse(raw);
+      if(msg._status){
+        var sm={'proxy_ready':'proxy ready','upstream_connected':'aisstream connected','data_flowing':'data flowing!','upstream_closed':'upstream closed','upstream_error':'upstream error'};
+        setStatus('live',sm[msg._status]||msg._status);
+        if(msg._status==='upstream_error'||msg._status==='upstream_closed'){showApiErr('Server: '+msg._status+(msg.msg?' — '+msg.msg:''));}
+        return;
+      }
       if(msg.error){showApiErr('API error: '+msg.error);return}
       handleMsg(msg);
     }catch(ex){}
