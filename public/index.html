@@ -201,6 +201,7 @@ document.querySelectorAll('.region-btn').forEach(function(btn){
 var shipTypes={30:'Fishing',31:'Towing',32:'Towing',33:'Dredging',34:'Diving',35:'Military',36:'Sailing',37:'Pleasure',50:'Pilot',51:'SAR',52:'Tug',53:'Port tender',55:'Law enf',58:'Medical',60:'Passenger',61:'Passenger',62:'Passenger',63:'Passenger',64:'Passenger',65:'Passenger',70:'Cargo',71:'Cargo',72:'Cargo',73:'Cargo',74:'Cargo',75:'Cargo',80:'Tanker',81:'Tanker',82:'Tanker',83:'Tanker',84:'Tanker',85:'Tanker',90:'Other'};
 function getType(t){if(!t)return '';return shipTypes[t]||(t>=40&&t<50?'HSC':t>=20&&t<30?'WIG':'Other')}
 function markerColor(s){if(s==null||s<0.5)return '#5F5E5A';if(s<5)return '#d29922';return '#1D9E75'}
+function shipEmoji(s){if(s==null||s<0.5)return '⚓';if(s<5)return '🚢';return '🛳️';}
 function speedClass(s){if(s==null||s<0.5)return 'spd-stop';if(s<5)return 'spd-slow';return 'spd-move'}
 
 function doConnect(){
@@ -314,7 +315,11 @@ function handleMsg(msg){
     var color=markerColor(v.speed);
     if(markers[mmsi]){
       markers[mmsi].setLatLng([v.lat,v.lon]);
-      markers[mmsi].setStyle({fillColor:color,color:color});
+      markers[mmsi].setIcon(L.divIcon({
+        className:'',
+        html:'<div style="font-size:18px;line-height:1;transform:rotate('+((v.heading||v.cog||0))+'deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))">'+shipEmoji(v.speed)+'</div>',
+        iconSize:[22,22],iconAnchor:[11,11]
+      }));
     } else {
       var circ=L.circleMarker([v.lat,v.lon],{radius:5,fillColor:color,color:color,weight:1.5,opacity:1,fillOpacity:0.85}).addTo(mapInst);
       circ.bindPopup(function(){return buildPopup(mmsi)},{maxWidth:240});
