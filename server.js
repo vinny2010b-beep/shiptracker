@@ -3,7 +3,7 @@ const { createServer } = require('http');
 const { WebSocket, WebSocketServer } = require('ws');
 const path = require('path');
 
-const API_KEY = process.env.AISSTREAM_API_KEY || '668b2e628751538eebf699653f7d3dc001bb7921';
+const API_KEY = process.env.AISSTREAM_API_KEY || '88725b94e9703f7de49e8f993b2427ef400bb3a0';
 const PORT    = process.env.PORT || 3000;
 
 const app    = express();
