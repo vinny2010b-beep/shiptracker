@@ -11,8 +11,9 @@ const DB_API_URL    = process.env.DB_API_URL || 'https://rachelssolutions.com/ai
 const DB_SECRET     = process.env.DB_SECRET  || 'ais_secret_key_change_me';
 const SAVE_INTERVAL = 30000; // save to DB every 30 seconds
 
-// East Coast US bounding box — only these vessels saved to DB
-const EAST_COAST_BBOX = [[24, -82], [47, -65]];
+// East Coast US + 140 miles offshore bounding box
+// Extends from Florida to Maine, and ~140 miles out to sea (~2 degrees of longitude)
+const EAST_COAST_BBOX = [[24, -82], [47, -60]];
 
 const DEFAULT_SUB = JSON.stringify({
   APIKey:             API_KEY,
@@ -128,7 +129,7 @@ wss.on('connection', (browser) => {
         // Only save East Coast US vessels to DB (lat 24-47, lon -82 to -65)
         const dlat = meta.latitude;
         const dlon = meta.longitude;
-        const isEastCoast = dlat >= 24 && dlat <= 47 && dlon >= -82 && dlon <= -65;
+        const isEastCoast = dlat >= 24 && dlat <= 47 && dlon >= -82 && dlon <= -60;
         if (!isEastCoast) return;
 
         if (!vessels[mmsi]) vessels[mmsi] = { mmsi };
