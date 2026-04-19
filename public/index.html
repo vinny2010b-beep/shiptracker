@@ -84,6 +84,8 @@ tr.selected td{background:rgba(29,158,117,.12)}
 .popup-name{font-weight:700;color:var(--green);font-size:13px;margin-bottom:4px}
 .popup-row{display:flex;justify-content:space-between;gap:16px;border-top:1px solid var(--border);padding-top:3px;margin-top:3px}
 .popup-row span:first-child{color:var(--muted)}
+.temp-active{background:rgba(29,158,117,.2)!important;border-color:var(--green)!important;color:var(--green)!important}
+.buoy-label{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:2px 5px;font-size:10px;font-family:var(--mono);color:var(--text);white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.4)}
 .legend{background:rgba(22,27,34,.9)!important;border:1px solid var(--border)!important;border-radius:6px;padding:8px 12px;font-size:11px}
 .legend-row{display:flex;align-items:center;gap:6px;margin-bottom:3px;color:var(--muted)}
 .legend-row:last-child{margin-bottom:0}
@@ -123,6 +125,7 @@ tr.selected td{background:rgba(29,158,117,.12)}
     <div class="stat-pill"><div class="pulse" id="pulse-dot" style="display:none"></div><span class="val" id="st-vessels">0</span><span class="lbl">vessels</span></div>
     <div class="stat-pill"><span class="val" id="st-msgs">0</span><span class="lbl">msgs</span></div>
     <div class="stat-pill"><div class="status-dot" id="status-dot"></div><span id="st-status">—</span></div>
+    <button class="disc-btn" id="temp-btn" onclick="toggleTemp()" title="Toggle water temperature overlay">🌡️ Temp</button>
     <button class="disc-btn" onclick="doDisconnect()">Disconnect</button>
   </div>
   <div class="api-err" id="api-err"></div>
@@ -566,6 +569,120 @@ function clearTrail() {
   trailData=[];
   document.getElementById('trail-panel').style.display='none';
 }
+// ── Water Temperature ─────────────────────────────────────────────────────────
+var tempLayerSST = null;
+var buoyMarkers  = [];
+var tempEnabled  = false;
+
+// East Coast NOAA buoy station IDs (CO-OPS stations with water temp)
+var BUOY_STATIONS = [
+  {id:'8443970',name:'Boston, MA'},
+  {id:'8447930',name:'Woods Hole, MA'},
+  {id:'8461490',name:'New London, CT'},
+  {id:'8516945',name:'Kings Point, NY'},
+  {id:'8518750',name:'The Battery, NY'},
+  {id:'8531680',name:'Sandy Hook, NJ'},
+  {id:'8534720',name:'Atlantic City, NJ'},
+  {id:'8557380',name:'Lewes, DE'},
+  {id:'8570283',name:'Ocean City Inlet, MD'},
+  {id:'8574680',name:'Baltimore, MD'},
+  {id:'8638610',name:'Sewells Point, VA'},
+  {id:'8651370',name:'Duck, NC'},
+  {id:'8656483',name:'Beaufort, NC'},
+  {id:'8661070',name:'Springmaid Pier, SC'},
+  {id:'8720218',name:'Mayport, FL'},
+  {id:'8722670',name:'Lake Worth Pier, FL'},
+  {id:'8724580',name:'Key West, FL'},
+  {id:'8726520',name:'St. Petersburg, FL'},
+  {id:'8736897',name:'Dauphin Island, AL'},
+];
+
+function tempColor(f) {
+  // Map temperature in F to a color: cold=blue, cool=teal, warm=orange, hot=red
+  if(f < 45)  return '#0000ff';
+  if(f < 55)  return '#00aaff';
+  if(f < 65)  return '#00ffcc';
+  if(f < 72)  return '#00cc44';
+  if(f < 78)  return '#ffcc00';
+  if(f < 82)  return '#ff8800';
+  return '#ff2200';
+}
+
+function toggleTemp() {
+  tempEnabled = !tempEnabled;
+  var btn = document.getElementById('temp-btn');
+  if(tempEnabled) {
+    btn.classList.add('temp-active');
+    loadTempOverlay();
+    loadBuoyTemps();
+  } else {
+    btn.classList.remove('temp-active');
+    removeTempOverlay();
+  }
+}
+
+function loadTempOverlay() {
+  if(tempLayerSST) return;
+  // NOAA CoastWatch WMS — satellite sea surface temperature
+  tempLayerSST = L.tileLayer.wms('https://coastwatch.pfeg.noaa.gov/erddap/wms/jplMURSST41/request', {
+    layers:      'jplMURSST41:analysed_sst',
+    format:      'image/png',
+    transparent: true,
+    opacity:     0.45,
+    version:     '1.3.0',
+    crs:         L.CRS.EPSG4326,
+    styles:      '',
+    attribution: 'NOAA CoastWatch SST'
+  });
+  tempLayerSST.addTo(mapInst);
+}
+
+function removeTempOverlay() {
+  if(tempLayerSST) { mapInst.removeLayer(tempLayerSST); tempLayerSST = null; }
+  buoyMarkers.forEach(function(m){ mapInst.removeLayer(m); });
+  buoyMarkers = [];
+}
+
+function loadBuoyTemps() {
+  buoyMarkers.forEach(function(m){ mapInst.removeLayer(m); });
+  buoyMarkers = [];
+  var loaded = 0;
+
+  BUOY_STATIONS.forEach(function(st) {
+    fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station='+st.id+'&product=water_temperature&units=english&time_zone=gmt&format=json')
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        if(!tempEnabled) return;
+        var reading = data && data.data && data.data[0];
+        if(!reading || reading.v === undefined) return;
+        var tempF = parseFloat(reading.v);
+        var tempC = ((tempF - 32) * 5/9).toFixed(1);
+        var color = tempColor(tempF);
+        var time  = reading.t;
+
+        // Fetch station info for lat/lon
+        fetch('https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/'+st.id+'.json?type=waterlevels&units=english')
+          .then(function(r){ return r.json(); })
+          .then(function(meta) {
+            if(!tempEnabled) return;
+            var lat = meta.stations && meta.stations[0] && meta.stations[0].lat;
+            var lon = meta.stations && meta.stations[0] && meta.stations[0].lng;
+            if(!lat || !lon) return;
+
+            var icon = L.divIcon({
+              className: 'buoy-label',
+              html: '<span style="color:'+color+';font-weight:700">'+tempF.toFixed(1)+'°F</span> <span style="opacity:.7">'+tempC+'°C</span>',
+              iconAnchor: [30, 10]
+            });
+            var m = L.marker([lat, lon], { icon: icon, zIndexOffset: -100 })
+              .addTo(mapInst)
+              .bindPopup('<b>'+st.name+'</b><br>Water temp: <b style="color:'+color+'">'+tempF.toFixed(1)+'°F ('+tempC+'°C)</b><br><small>'+time+' UTC</small>');
+            buoyMarkers.push(m);
+          }).catch(function(){});
+      }).catch(function(){});
+  });
+}
+
 </script>
 </body>
 </html>
