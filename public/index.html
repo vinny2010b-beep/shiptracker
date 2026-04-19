@@ -85,7 +85,7 @@ tr.selected td{background:rgba(29,158,117,.12)}
 .popup-row{display:flex;justify-content:space-between;gap:16px;border-top:1px solid var(--border);padding-top:3px;margin-top:3px}
 .popup-row span:first-child{color:var(--muted)}
 .temp-active{background:rgba(29,158,117,.2)!important;border-color:var(--green)!important;color:var(--green)!important}
-.buoy-label{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:2px 5px;font-size:10px;font-family:var(--mono);color:var(--text);white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+
 .legend{background:rgba(22,27,34,.9)!important;border:1px solid var(--border)!important;border-radius:6px;padding:8px 12px;font-size:11px}
 .legend-row{display:flex;align-items:center;gap:6px;margin-bottom:3px;color:var(--muted)}
 .legend-row:last-child{margin-bottom:0}
@@ -570,6 +570,59 @@ function clearTrail() {
   trailData=[];
   document.getElementById('trail-panel').style.display='none';
 }
+// ── ERDDAP satellite SST grid ─────────────────────────────────────────────────
+function loadERDDAPGrid() {
+  // Sample SST at a grid of points across East Coast waters
+  // Using NOAA MUR SST dataset via ERDDAP - yesterday's date for best coverage
+  var d = new Date();
+  d.setDate(d.getDate()-1);
+  var yyyy = d.getUTCFullYear();
+  var mm   = String(d.getUTCMonth()+1).padStart(2,'0');
+  var dd   = String(d.getUTCDate()).padStart(2,'0');
+  var dateStr = yyyy+'-'+mm+'-'+dd+'T00:00:00Z';
+
+  // Grid of lat/lon points covering East Coast offshore waters
+  var gridPoints = [
+    // Maine / Nova Scotia shelf
+    [44.0,-66.5],[43.5,-68.0],[43.0,-69.5],[42.5,-70.5],[42.0,-69.0],
+    // Cape Cod / Georges Bank
+    [41.5,-67.0],[41.5,-69.5],[41.0,-71.0],[40.8,-68.5],[40.5,-66.5],
+    // Long Island / NY Bight
+    [40.5,-72.5],[40.2,-74.0],[39.8,-73.5],[39.5,-72.0],[39.2,-74.5],
+    // NJ / Delaware shelf
+    [39.0,-73.5],[38.8,-74.5],[38.5,-73.0],[38.0,-74.5],[37.5,-74.8],
+    // Virginia / NC shelf
+    [37.0,-75.2],[36.5,-75.5],[36.0,-75.2],[35.5,-75.5],[35.0,-76.0],
+    [34.5,-76.5],[34.0,-77.0],[33.5,-78.0],[33.0,-78.5],
+    // SC / GA shelf
+    [32.5,-79.0],[32.0,-80.0],[31.5,-80.5],[31.0,-80.8],
+    // Florida shelf
+    [30.5,-81.0],[30.0,-80.8],[29.5,-80.5],[29.0,-80.3],[28.5,-80.2],
+    [28.0,-80.2],[27.5,-80.0],[27.0,-79.8],[26.5,-79.5],[26.0,-79.5],
+    // Gulf Stream / offshore
+    [38.0,-70.0],[36.0,-72.0],[34.0,-74.0],[32.0,-77.0],[30.0,-79.0],
+    [40.0,-67.0],[37.0,-70.0],[35.0,-73.0],[33.0,-76.0],
+  ];
+
+  gridPoints.forEach(function(pt) {
+    var lat = pt[0], lon = pt[1];
+    var url = 'https://coastwatch.pfeg.noaa.gov/erddap/griddap/jplMURSST41.json'
+      +'?analysed_sst%5B('+dateStr+')%5D%5B('+lat+')%5D%5B('+lon+')%5D';
+
+    fetch(url)
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        if(!tempEnabled) return;
+        var rows = data && data.table && data.table.rows;
+        if(!rows || !rows[0] || rows[0][3]==null) return;
+        var tempC = parseFloat(rows[0][3]);
+        if(isNaN(tempC)||tempC < -2||tempC > 40) return;
+        var tempF = parseFloat((tempC*9/5+32).toFixed(1));
+        addBuoyMarker(lat, lon, tempF, 'Satellite SST ('+lat+', '+lon+')', dateStr.substring(0,10));
+      }).catch(function(){});
+  });
+}
+
 // ── Toggle vessels visibility ──────────────────────────────────────────────────
 var vesselsVisible = true;
 function toggleVessels() {
@@ -711,10 +764,24 @@ function addBuoyMarker(lat, lon, tempF, name, time) {
   if(!tempEnabled||!mapInst)return;
   var color = tempColor(tempF);
   var tempC = ((tempF-32)*5/9).toFixed(1);
+  var html = '<div style="'
+    +'background:'+color+';'
+    +'color:#fff;'
+    +'font-weight:700;'
+    +'font-size:13px;'
+    +'padding:3px 7px;'
+    +'border-radius:20px;'
+    +'border:2px solid rgba(255,255,255,0.8);'
+    +'box-shadow:0 2px 6px rgba(0,0,0,0.6);'
+    +'white-space:nowrap;'
+    +'text-shadow:0 1px 2px rgba(0,0,0,0.5);'
+    +'cursor:pointer;'
+    +'">🌡️ '+tempF.toFixed(1)+'°F</div>';
   var icon = L.divIcon({
-    className: 'buoy-label',
-    html: '<span style="color:'+color+';font-weight:700">'+tempF.toFixed(1)+'°F</span>',
-    iconAnchor: [22, 10]
+    className: '',
+    html: html,
+    iconSize: [90, 28],
+    iconAnchor: [45, 14]
   });
   var m = L.marker([lat,lon],{icon:icon,zIndexOffset:-100})
     .addTo(mapInst)
@@ -743,6 +810,9 @@ function loadBuoyTemps() {
           }).catch(function(){});
       }).catch(function(){});
   });
+
+  // ERDDAP satellite SST grid points across East Coast offshore waters
+  loadERDDAPGrid();
 
   // NDBC offshore buoys - fetch JSON from NOAA ERDDAP
   NDBC_BUOYS.forEach(function(buoy) {
