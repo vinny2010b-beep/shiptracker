@@ -911,6 +911,27 @@ function removeTempOverlay() {
   removeTempLegend();
 }
 
+function fetchSST(lat, lon, attempt) {
+  if(!tempEnabled) return;
+  fetch('/sst?lat='+lat+'&lon='+lon)
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if(!tempEnabled) return;
+      var rows = data && data.table && data.table.rows;
+      if(!rows || !rows[0] || rows[0][3]==null) return;
+      var tempC = parseFloat(rows[0][3]);
+      if(isNaN(tempC)||tempC<-2||tempC>40) return;
+      var tempF = parseFloat((tempC*9/5+32).toFixed(1));
+      addBuoyMarker(lat, lon, tempF, 'Satellite SST', 'yesterday');
+    })
+    .catch(function() {
+      // Retry up to 2 times with backoff (handles cold start)
+      if(attempt < 2 && tempEnabled) {
+        setTimeout(function(){ fetchSST(lat, lon, attempt+1); }, 5000 * (attempt+1));
+      }
+    });
+}
+
 function addBuoyMarker(lat, lon, tempF, name, time) {
   if(!tempEnabled||!mapInst)return;
   var color = tempColor(tempF);
