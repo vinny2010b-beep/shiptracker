@@ -57,27 +57,63 @@ function saveToDb(vessels) {
   req.end();
 }
 
-// ── ERDDAP SST proxy (avoids CORS) ───────────────────────────────────────────
+// ── ERDDAP SST proxy — single point ─────────────────────────────────────────
 app.get('/sst', (req, res) => {
   const lat  = parseFloat(req.query.lat);
   const lon  = parseFloat(req.query.lon);
   if (isNaN(lat) || isNaN(lon)) { res.json({ error: 'bad params' }); return; }
-
-  const d    = new Date();
-  d.setDate(d.getDate() - 1);
+  const d    = new Date(); d.setDate(d.getDate() - 1);
   const date = d.toISOString().substring(0, 10) + 'T00:00:00Z';
   const url  = `https://coastwatch.pfeg.noaa.gov/erddap/griddap/jplMURSST41.json?analysed_sst%5B(${date})%5D%5B(${lat})%5D%5B(${lon})%5D`;
+  https.get(url, (r) => {
+    let data = '';
+    r.on('data', d => data += d);
+    r.on('end', () => { res.setHeader('Access-Control-Allow-Origin','*'); res.setHeader('Content-Type','application/json'); res.send(data); });
+  }).on('error', (e) => res.json({ error: e.message }));
+});
 
+// ── ERDDAP SST batch — fetch all points in ONE ERDDAP request ────────────────
+// Uses ERDDAP's CSV endpoint to get a bounding box of points at once
+app.get('/sst-grid', (req, res) => {
+  const d = new Date(); d.setDate(d.getDate() - 1);
+  const date = d.toISOString().substring(0, 10) + 'T00:00:00Z';
+
+  // Fetch a 0.5-degree resolution grid covering the whole East Coast
+  // ERDDAP griddap: lat 24 to 47, lon -82 to -60, stride 1 (0.01 deg native, use stride ~50 for ~0.5deg)
+  const url = `https://coastwatch.pfeg.noaa.gov/erddap/griddap/jplMURSST41.csv?analysed_sst%5B(${date})%5D%5B(47):50:(24)%5D%5B(-60):50:(-82)%5D`;
+
+  console.log('[sst-grid] fetching:', url);
   https.get(url, (r) => {
     let data = '';
     r.on('data', d => data += d);
     r.on('end', () => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Content-Type', 'application/json');
-      res.send(data);
+      try {
+        // Parse CSV: time,lat,lon,analysed_sst
+        const lines  = data.trim().split('
+');
+        const points = [];
+        for (let i = 2; i < lines.length; i++) { // skip 2 header rows
+          const cols = lines[i].split(',');
+          if (cols.length < 4) continue;
+          const lat   = parseFloat(cols[1]);
+          const lon   = parseFloat(cols[2]);
+          const tempC = parseFloat(cols[3]);
+          if (isNaN(lat) || isNaN(lon) || isNaN(tempC)) continue;
+          if (tempC < -2 || tempC > 40) continue;
+          const tempF = parseFloat((tempC * 9/5 + 32).toFixed(1));
+          points.push({ lat, lon, tempC: parseFloat(tempC.toFixed(1)), tempF });
+        }
+        console.log('[sst-grid] parsed', points.length, 'points');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.json({ points, date: date.substring(0, 10) });
+      } catch(e) {
+        console.error('[sst-grid] parse error:', e.message);
+        res.json({ error: e.message, points: [] });
+      }
     });
   }).on('error', (e) => {
-    res.json({ error: e.message });
+    console.error('[sst-grid] fetch error:', e.message);
+    res.json({ error: e.message, points: [] });
   });
 });
 
