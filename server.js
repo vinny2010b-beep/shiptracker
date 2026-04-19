@@ -81,6 +81,22 @@ app.get('/sst', (req, res) => {
   });
 });
 
+// ── NDBC buoy proxy (avoids CORS) ────────────────────────────────────────────
+app.get('/ndbc', (req, res) => {
+  const id = (req.query.id || '').replace(/[^a-zA-Z0-9]/g, '');
+  if (!id) { res.json({ error: 'bad id' }); return; }
+  const url = `https://www.ndbc.noaa.gov/data/realtime2/${id}.txt`;
+  https.get(url, (r) => {
+    let data = '';
+    r.on('data', d => data += d);
+    r.on('end', () => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Content-Type', 'text/plain');
+      res.send(data);
+    });
+  }).on('error', (e) => res.status(500).send('error: ' + e.message));
+});
+
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   const test = new WebSocket('wss://stream.aisstream.io/v0/stream');
