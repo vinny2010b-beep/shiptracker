@@ -244,6 +244,7 @@ function doConnect(){
   }
 
   setStatus('connecting','connecting…');
+  loadRecentFromDB(); // load last known positions immediately
   ws=null;
   startSSE();
 }
@@ -403,6 +404,57 @@ function updateTable(){
       '<td class="'+speedClass(v.speed)+'">'+(v.speed!=null?v.speed.toFixed(1)+' kn':'—')+'</td>'+
       '<td>'+(v.type?'<span class="type-badge">'+getType(v.type)+'</span>':'')+'</td></tr>';
   }).join('');
+}
+
+function formatTime(dt) {
+  if(!dt)return '—';
+  var d=new Date(dt.replace(' ','T')+'Z');
+  if(isNaN(d))d=new Date(dt);
+  return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+
+    ' '+d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function loadRecentFromDB() {
+  fetch(DB_API+'?action=recent')
+    .then(function(r){return r.json()})
+    .then(function(data){
+      var list=data.vessels||[];
+      if(!list.length)return;
+      list.forEach(function(v){
+        var mmsi=parseInt(v.mmsi);
+        var lat=parseFloat(v.lat);
+        var lon=parseFloat(v.lon);
+        if(!mmsi||!lat||!lon)return;
+        if(!vessels[mmsi])vessels[mmsi]={mmsi:mmsi};
+        var vv=vessels[mmsi];
+        // Only set from DB if no live data yet
+        if(!vv.lat){ vv.lat=lat; vv.lon=lon; }
+        if(!vv.name&&v.name)vv.name=v.name;
+        if(!vv.speed&&v.speed!=null)vv.speed=parseFloat(v.speed);
+        if(!vv.type&&v.ship_type)vv.type=parseInt(v.ship_type);
+        if(!vv.destination&&v.destination)vv.destination=v.destination;
+        vv.lastSeen=v.last_seen; // DB timestamp
+        vv.fromDB=true;
+
+        // Plot on map
+        var color=markerColor(vv.speed);
+        if(!markers[mmsi]){
+          var icon=L.divIcon({
+            className:'',
+            html:'<div style="font-size:18px;line-height:1;transform:rotate('+((vv.heading||vv.cog||0))+'deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))">'+shipEmoji(vv.speed)+'</div>',
+            iconSize:[22,22],iconAnchor:[11,11]
+          });
+          var m=L.marker([lat,lon],{icon:icon,opacity:0.7}).addTo(mapInst);
+          m.bindPopup(function(){return buildPopup(mmsi)},{maxWidth:240});
+          m.on('click',function(){selectVesselWithTrail(mmsi)});
+          markers[mmsi]=m;
+        }
+      });
+      document.getElementById('st-vessels').textContent=Object.keys(vessels).length.toLocaleString();
+      updateTable();
+      console.log('[db] loaded',list.length,'vessels from DB');
+    })
+    .catch(function(e){console.log('[db] recent load failed:',e.message)});
 }
 
 function selectVesselWithTrail(mmsi) {
