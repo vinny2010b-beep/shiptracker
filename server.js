@@ -57,6 +57,30 @@ function saveToDb(vessels) {
   req.end();
 }
 
+// ── ERDDAP SST proxy (avoids CORS) ───────────────────────────────────────────
+app.get('/sst', (req, res) => {
+  const lat  = parseFloat(req.query.lat);
+  const lon  = parseFloat(req.query.lon);
+  if (isNaN(lat) || isNaN(lon)) { res.json({ error: 'bad params' }); return; }
+
+  const d    = new Date();
+  d.setDate(d.getDate() - 1);
+  const date = d.toISOString().substring(0, 10) + 'T00:00:00Z';
+  const url  = `https://coastwatch.pfeg.noaa.gov/erddap/griddap/jplMURSST41.json?analysed_sst%5B(${date})%5D%5B(${lat})%5D%5B(${lon})%5D`;
+
+  https.get(url, (r) => {
+    let data = '';
+    r.on('data', d => data += d);
+    r.on('end', () => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Content-Type', 'application/json');
+      res.send(data);
+    });
+  }).on('error', (e) => {
+    res.json({ error: e.message });
+  });
+});
+
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   const test = new WebSocket('wss://stream.aisstream.io/v0/stream');
