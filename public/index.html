@@ -676,6 +676,18 @@ function loadVisibleAreaGrid() {
     }
   }
 
+  // Filter to ocean-only points (rough bounding check to skip inland/Great Lakes)
+  pts = pts.filter(function(pt) {
+    var la=pt[0], lo=pt[1];
+    // Skip Great Lakes region
+    if(la>41&&la<47&&lo>-84&&lo<-76) return false;
+    // Skip deep inland (rough check - east coast land mass)
+    if(lo>-70&&la>40&&la<45) return false; // New England inland
+    if(lo>-75&&la>38&&la<42) return false; // Mid-Atlantic inland
+    if(lo>-77&&la>35&&la<39) return false; // Chesapeake inland
+    return true;
+  });
+
   pts.forEach(function(pt, i) {
     setTimeout(function() {
       if(!tempEnabled) return;
@@ -849,7 +861,6 @@ function removeTempOverlay() {
 
 function fetchSST(lat, lon, attempt, isZoom) {
   if(!tempEnabled) return;
-  if(attempt===0&&!isZoom) console.log('[sst] fetching',lat,lon);
   fetch('/sst?lat='+lat+'&lon='+lon)
     .then(function(r){ return r.json(); })
     .then(function(data) {
