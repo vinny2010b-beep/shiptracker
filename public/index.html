@@ -248,12 +248,11 @@ function doConnect(){
     mapInst=L.map('map').setView(selCenter,selZoom);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© <a href="https://openstreetmap.org">OpenStreetMap</a>',maxZoom:18}).addTo(mapInst);
 
-    // When zoomed in with temp on, load a fine grid for the visible area
+    // Reload temp grid whenever map moves with temp on
     mapInst.on('moveend zoomend', function() {
       if(!tempEnabled) return;
-      var zoom = mapInst.getZoom();
-      if(zoom < 7) return; // only load fine grid when zoomed in
-      loadVisibleAreaGrid();
+      clearTimeout(zoomTempTimer);
+      zoomTempTimer = setTimeout(loadVisibleAreaGrid, 600);
     });
 
     // Click on water to get temp at that spot
@@ -716,45 +715,47 @@ function removeTempLegend() {
 // ── Dynamic fine grid for zoomed-in view ─────────────────────────────────────
 var visibleGridLoaded = false;
 var lastZoomBounds = null;
+var zoomTempTimer = null;
+var pendingFetches = [];
 
 function loadVisibleAreaGrid() {
   if(!tempEnabled||!mapInst) return;
   var bounds = mapInst.getBounds();
   var boundsStr = bounds.toBBoxString();
-  if(boundsStr === lastZoomBounds) return; // same view, skip
+  if(boundsStr === lastZoomBounds) return;
   lastZoomBounds = boundsStr;
 
-  var south = bounds.getSouth(), north = bounds.getNorth();
-  var west  = bounds.getWest(),  east  = bounds.getEast();
+  var zoom  = mapInst.getZoom();
+  var south = Math.max(bounds.getSouth(), 20);
+  var north = Math.min(bounds.getNorth(), 50);
+  var west  = Math.max(bounds.getWest(), -85);
+  var east  = Math.min(bounds.getEast(), -55);
 
-  // Build a fine 8x8 grid across the visible area
-  var step = Math.max((north-south)/7, (east-west)/7);
-  var pts  = [];
-  for(var lat=south+step/2; lat<north; lat+=step) {
-    for(var lon=west+step/2; lon<east; lon+=step) {
-      var rlat = parseFloat(lat.toFixed(3));
-      var rlon = parseFloat(lon.toFixed(3));
-      // Only fetch ocean points (rough check - not too far inland)
-      pts.push([rlat, rlon]);
+  if(south >= north || west >= east) return;
+
+  // Density based on zoom level
+  var density = zoom >= 10 ? 10 : zoom >= 8 ? 8 : zoom >= 6 ? 6 : 5;
+  var latStep = (north - south) / density;
+  var lonStep = (east  - west)  / density;
+
+  // Remove only the zoomed-in markers (keep coast/NDBC ones)
+  buoyMarkers = buoyMarkers.filter(function(m) {
+    if(m._isZoomMarker) { mapInst.removeLayer(m); return false; }
+    return true;
+  });
+
+  var pts = [];
+  for(var la = south + latStep/2; la < north; la += latStep) {
+    for(var lo = west + lonStep/2; lo < east; lo += lonStep) {
+      pts.push([parseFloat(la.toFixed(3)), parseFloat(lo.toFixed(3))]);
     }
   }
 
-  // Fire requests staggered
   pts.forEach(function(pt, i) {
     setTimeout(function() {
       if(!tempEnabled) return;
-      fetch('/sst?lat='+pt[0]+'&lon='+pt[1])
-        .then(function(r){return r.json();})
-        .then(function(data){
-          if(!tempEnabled) return;
-          var rows=data&&data.table&&data.table.rows;
-          if(!rows||!rows[0]||rows[0][3]==null) return;
-          var tempC=parseFloat(rows[0][3]);
-          if(isNaN(tempC)||tempC<-2||tempC>40) return;
-          var tempF=parseFloat((tempC*9/5+32).toFixed(1));
-          addBuoyMarker(pt[0],pt[1],tempF,'Water temp at '+pt[0]+', '+pt[1],'Satellite SST');
-        }).catch(function(){});
-    }, i*150);
+      fetchSST(pt[0], pt[1], 0, true);
+    }, i * 200);
   });
 }
 
@@ -911,7 +912,7 @@ function removeTempOverlay() {
   removeTempLegend();
 }
 
-function fetchSST(lat, lon, attempt) {
+function fetchSST(lat, lon, attempt, isZoom) {
   if(!tempEnabled) return;
   fetch('/sst?lat='+lat+'&lon='+lon)
     .then(function(r){ return r.json(); })
@@ -922,17 +923,16 @@ function fetchSST(lat, lon, attempt) {
       var tempC = parseFloat(rows[0][3]);
       if(isNaN(tempC)||tempC<-2||tempC>40) return;
       var tempF = parseFloat((tempC*9/5+32).toFixed(1));
-      addBuoyMarker(lat, lon, tempF, 'Satellite SST', 'yesterday');
+      addBuoyMarker(lat, lon, tempF, 'Satellite SST', 'yesterday', isZoom);
     })
     .catch(function() {
-      // Retry up to 2 times with backoff (handles cold start)
       if(attempt < 2 && tempEnabled) {
-        setTimeout(function(){ fetchSST(lat, lon, attempt+1); }, 5000 * (attempt+1));
+        setTimeout(function(){ fetchSST(lat, lon, attempt+1, isZoom); }, 5000*(attempt+1));
       }
     });
 }
 
-function addBuoyMarker(lat, lon, tempF, name, time) {
+function addBuoyMarker(lat, lon, tempF, name, time, isZoom) {
   if(!tempEnabled||!mapInst)return;
   var color = tempColor(tempF);
   var tempC = ((tempF-32)*5/9).toFixed(1);
