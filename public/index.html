@@ -670,24 +670,13 @@ function loadERDDAPGrid() {
   gridPoints.push([33.0,-70.0],[32.0,-72.0],[31.0,-73.0],[30.0,-74.0],[29.0,-74.5]);
 
   // Stagger requests 5 at a time every 300ms
+  console.log('[sst] loading ERDDAP grid of '+gridPoints.length+' points');
   var chunks = [];
   for(var i=0;i<gridPoints.length;i+=5) chunks.push(gridPoints.slice(i,i+5));
   chunks.forEach(function(chunk,ci){
     setTimeout(function(){
       chunk.forEach(function(pt){
-        if(!tempEnabled) return;
-        var lat=pt[0],lon=pt[1];
-        fetch('/sst?lat='+lat+'&lon='+lon)
-          .then(function(r){return r.json();})
-          .then(function(data){
-            if(!tempEnabled) return;
-            var rows=data&&data.table&&data.table.rows;
-            if(!rows||!rows[0]||rows[0][3]==null) return;
-            var tempC=parseFloat(rows[0][3]);
-            if(isNaN(tempC)||tempC<-2||tempC>40) return;
-            var tempF=parseFloat((tempC*9/5+32).toFixed(1));
-            addBuoyMarker(lat,lon,tempF,'Satellite SST',dateStr.substring(0,10));
-          }).catch(function(){});
+        fetchSST(pt[0], pt[1], 0, false);
       });
     },ci*300);
   });
@@ -776,6 +765,15 @@ function toggleVessels() {
 var tempLayerSST = null;
 var buoyMarkers  = [];
 var tempEnabled  = false;
+
+// Shared date string for SST requests (yesterday's date)
+function getSSTDate() {
+  var d = new Date();
+  d.setDate(d.getDate()-1);
+  return d.getUTCFullYear()+'-'
+    +String(d.getUTCMonth()+1).padStart(2,'0')+'-'
+    +String(d.getUTCDate()).padStart(2,'0')+'T00:00:00Z';
+}
 
 // East Coast NOAA buoy station IDs (CO-OPS stations with water temp)
 // CO-OPS coastal stations
@@ -915,6 +913,7 @@ function removeTempOverlay() {
 
 function fetchSST(lat, lon, attempt, isZoom) {
   if(!tempEnabled) return;
+  if(attempt===0&&!isZoom) console.log('[sst] fetching',lat,lon);
   fetch('/sst?lat='+lat+'&lon='+lon)
     .then(function(r){ return r.json(); })
     .then(function(data) {
@@ -926,7 +925,8 @@ function fetchSST(lat, lon, attempt, isZoom) {
       var tempF = parseFloat((tempC*9/5+32).toFixed(1));
       addBuoyMarker(lat, lon, tempF, 'Satellite SST', 'yesterday', isZoom);
     })
-    .catch(function() {
+    .catch(function(e) {
+      console.warn('[sst] failed',lat,lon,'attempt',attempt,e.message||e);
       if(attempt < 2 && tempEnabled) {
         setTimeout(function(){ fetchSST(lat, lon, attempt+1, isZoom); }, 5000*(attempt+1));
       }
