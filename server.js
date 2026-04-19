@@ -76,7 +76,7 @@ wss.on('connection', (browser) => {
     });
 
     upstream.on('message', (data, isBinary) => {
-      safeSend(browser, isBinary ? data : data.toString());
+      browser.send(data.toString());
     });
 
     upstream.on('close', (code, reason) => {
