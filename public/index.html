@@ -106,7 +106,7 @@ tr.selected td{background:rgba(29,158,117,.12)}
     <label>Region</label>
     <div class="region-grid">
       <button class="region-btn" data-bbox="[[-90,-180],[90,180]]" data-center="[20,0]" data-zoom="2">🌍 Whole world</button>
-      <button class="region-btn active" data-bbox="[[24,-82],[47,-65]]" data-center="[38,-74]" data-zoom="6">🇺🇸 US East Coast</button>
+      <button class="region-btn active" data-bbox="[[24,-82],[47,-60]]" data-center="[38,-74]" data-zoom="6">🇺🇸 US East Coast</button>
       <button class="region-btn" data-bbox="[[20,-130],[50,-110]]" data-center="[37,-122]" data-zoom="5">🌊 US West Coast</button>
       <button class="region-btn" data-bbox="[[35,-10],[60,30]]" data-center="[50,10]" data-zoom="4">🇪🇺 Europe</button>
       <button class="region-btn" data-bbox="[[-10,95],[35,145]]" data-center="[12,115]" data-zoom="4">🌏 SE Asia</button>
@@ -204,7 +204,7 @@ function startSSE(){
     setTimeout(function(){if(ws===null)return;startSSE();},3000);
   };
 }
-var selBBox=[[24,-82],[47,-65]],selCenter=[38,-74],selZoom=6,selRegion='US East Coast';
+var selBBox=[[24,-82],[47,-60]],selCenter=[38,-74],selZoom=6,selRegion='US East Coast';
 
 document.querySelectorAll('.region-btn').forEach(function(btn){
   btn.addEventListener('click',function(){
