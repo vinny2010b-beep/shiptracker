@@ -357,10 +357,17 @@ function handleMsg(msg){
 
 function buildPopup(mmsi){
   var v=vessels[mmsi];
+  var live=v.fromDB===false;
+  var ts=v.lastSeen?formatTime(v.lastSeen):'—';
+  var src=live?'🟢 Live':'🕐 Last known';
   return '<div class="popup-name">'+(v.name||'Unknown')+'</div>'+
-    [['MMSI',mmsi],['Position',v.lat!=null?v.lat.toFixed(4)+', '+v.lon.toFixed(4):'—'],
-     ['Speed',v.speed!=null?v.speed.toFixed(1)+' kn':'—'],['Course',v.cog!=null?v.cog.toFixed(1)+'°':'—'],
-     ['Type',getType(v.type)||'—'],['Destination',v.destination||'—']]
+    [['MMSI',mmsi],
+     ['Updated',src+' '+ts],
+     ['Position',v.lat!=null?v.lat.toFixed(4)+', '+v.lon.toFixed(4):'—'],
+     ['Speed',v.speed!=null?v.speed.toFixed(1)+' kn':'—'],
+     ['Course',v.cog!=null?v.cog.toFixed(1)+'°':'—'],
+     ['Type',getType(v.type)||'—'],
+     ['Destination',v.destination||'—']]
     .map(function(r){return '<div class="popup-row"><span>'+r[0]+'</span><span>'+r[1]+'</span></div>'}).join('');
 }
 
@@ -378,10 +385,14 @@ function updateDetail(mmsi){
   var v=vessels[mmsi];if(!v)return;
   var panel=document.getElementById('detail-panel');
   panel.className='detail-panel';
+  var live=v.fromDB===false;
+  var ts=v.lastSeen?formatTime(v.lastSeen):'—';
+  var src=live?'🟢 Live':'🕐 Last known';
   var size=v.dim?((v.dim.A||0)+(v.dim.B||0))+'×'+((v.dim.C||0)+(v.dim.D||0))+'m':'—';
   panel.innerHTML='<div class="detail-name">'+(v.name||'MMSI '+mmsi)+'</div><div class="detail-grid">'+
     '<div class="detail-row"><div class="detail-label">MMSI</div><div class="detail-val">'+mmsi+'</div></div>'+
     '<div class="detail-row"><div class="detail-label">Type</div><div class="detail-val">'+(getType(v.type)||'—')+'</div></div>'+
+    '<div class="detail-row" style="grid-column:1/-1"><div class="detail-label">Last updated</div><div class="detail-val">'+src+' '+ts+'</div></div>'+
     '<div class="detail-row"><div class="detail-label">Speed</div><div class="detail-val">'+(v.speed!=null?v.speed.toFixed(1)+' kn':'—')+'</div></div>'+
     '<div class="detail-row"><div class="detail-label">Course</div><div class="detail-val">'+(v.cog!=null?v.cog.toFixed(1)+'°':'—')+'</div></div>'+
     '<div class="detail-row"><div class="detail-label">Lat</div><div class="detail-val">'+(v.lat!=null?v.lat.toFixed(5):'—')+'</div></div>'+
@@ -408,8 +419,8 @@ function updateTable(){
 
 function formatTime(dt) {
   if(!dt)return '—';
-  var d=new Date(dt.replace(' ','T')+'Z');
-  if(isNaN(d))d=new Date(dt);
+  var d=(dt instanceof Date)?dt:new Date((typeof dt==='string'?dt.replace(' ','T')+(dt.includes('Z')||dt.includes('+')? '':'Z'):''));
+  if(isNaN(d))return String(dt);
   return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+
     ' '+d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
 }
