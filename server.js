@@ -68,8 +68,14 @@ app.get('/sst', (req, res) => {
   https.get(url, (r) => {
     let data = '';
     r.on('data', d => data += d);
-    r.on('end', () => { res.setHeader('Access-Control-Allow-Origin','*'); res.setHeader('Content-Type','application/json'); res.send(data); });
-  }).on('error', (e) => res.json({ error: e.message }));
+    r.on('end', () => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Content-Type', 'application/json');
+      // Return empty result if ERDDAP returns an error (land, inland water, etc.)
+      if (!data.startsWith('{')) { res.json({ table: { rows: [] } }); return; }
+      res.send(data);
+    });
+  }).on('error', (e) => res.json({ table: { rows: [] } }));
 });
 
 // ── ERDDAP SST batch — fetch all points in ONE ERDDAP request ────────────────
