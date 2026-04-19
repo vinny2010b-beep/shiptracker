@@ -71,6 +71,13 @@ tr.selected td{background:rgba(29,158,117,.12)}
 .detail-row{display:flex;flex-direction:column}
 .detail-label{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:1px}
 .detail-val{font-family:var(--mono);font-size:12px;color:var(--text)}
+.trail-panel{position:absolute;bottom:0;left:0;right:340px;background:var(--surface);border-top:1px solid var(--border);padding:10px 16px;z-index:1000;display:none}
+.trail-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.trail-name{font-size:13px;font-weight:500;color:var(--green)}
+.trail-close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;line-height:1}
+.trail-info{font-size:11px;color:var(--muted);margin-bottom:8px}
+.trail-slider{width:100%;cursor:pointer}
+.trail-point-info{font-size:11px;font-family:var(--mono);color:var(--text);margin-top:6px}
 .leaflet-popup-content-wrapper{background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.5);color:var(--text)}
 .leaflet-popup-tip{background:var(--surface)}
 .leaflet-popup-content{font-size:12px;line-height:1.6;margin:10px 14px}
@@ -98,8 +105,8 @@ tr.selected td{background:rgba(29,158,117,.12)}
     <div id="err" class="err"></div>
     <label>Region</label>
     <div class="region-grid">
-      <button class="region-btn active" data-bbox="[[-90,-180],[90,180]]" data-center="[20,0]" data-zoom="2">🌍 Whole world</button>
-      <button class="region-btn" data-bbox="[[20,-100],[60,-60]]" data-center="[40,-78]" data-zoom="5">🇺🇸 US East Coast</button>
+      <button class="region-btn" data-bbox="[[-90,-180],[90,180]]" data-center="[20,0]" data-zoom="2">🌍 Whole world</button>
+      <button class="region-btn active" data-bbox="[[24,-82],[47,-65]]" data-center="[38,-74]" data-zoom="6">🇺🇸 US East Coast</button>
       <button class="region-btn" data-bbox="[[20,-130],[50,-110]]" data-center="[37,-122]" data-zoom="5">🌊 US West Coast</button>
       <button class="region-btn" data-bbox="[[35,-10],[60,30]]" data-center="[50,10]" data-zoom="4">🇪🇺 Europe</button>
       <button class="region-btn" data-bbox="[[-10,95],[35,145]]" data-center="[12,115]" data-zoom="4">🌏 SE Asia</button>
@@ -145,6 +152,8 @@ tr.selected td{background:rgba(29,158,117,.12)}
 </div>
 <script>
 var ws,mapInst,vessels={},markers={},msgCount=0,tableTimer=null,selectedMMSI=null;
+var DB_API='https://rachelssolutions.com/ais/vessels_api.php';
+var trailLayer=null, trailMarkers=[], trailData=[];
 var reconnectTimer=null;
 
 function startSSE(){
@@ -195,7 +204,7 @@ function startSSE(){
     setTimeout(function(){if(ws===null)return;startSSE();},3000);
   };
 }
-var selBBox=[[-90,-180],[90,180]],selCenter=[20,0],selZoom=2,selRegion='Whole world';
+var selBBox=[[24,-82],[47,-65]],selCenter=[38,-74],selZoom=6,selRegion='US East Coast';
 
 document.querySelectorAll('.region-btn').forEach(function(btn){
   btn.addEventListener('click',function(){
@@ -335,7 +344,7 @@ function handleMsg(msg){
     } else {
       var circ=L.circleMarker([v.lat,v.lon],{radius:5,fillColor:color,color:color,weight:1.5,opacity:1,fillOpacity:0.85}).addTo(mapInst);
       circ.bindPopup(function(){return buildPopup(mmsi)},{maxWidth:240});
-      circ.on('click',function(){selectVessel(mmsi)});
+      circ.on('click',function(){selectVesselWithTrail(mmsi)});
       markers[mmsi]=circ;
     }
   }
@@ -388,7 +397,7 @@ function updateTable(){
   var rows=Object.values(vessels).filter(function(v){return v.lat!=null}).sort(function(a,b){return b.updated-a.updated}).slice(0,200);
   document.getElementById('tbl-count').textContent=rows.length.toLocaleString();
   document.getElementById('tbl-body').innerHTML=rows.map(function(v){
-    return '<tr data-mmsi="'+v.mmsi+'" onclick="selectVessel('+v.mmsi+')" class="'+(selectedMMSI===v.mmsi?'selected':'')+'">'+
+    return '<tr data-mmsi="'+v.mmsi+'" onclick="selectVesselWithTrail('+v.mmsi+')" class="'+(selectedMMSI===v.mmsi?'selected':'')+'">'+
       '<td><div class="name-cell">'+(v.name||'—')+'</div><div class="mono">'+v.mmsi+'</div></td>'+
       '<td class="mono">'+(v.lat!=null?v.lat.toFixed(3):'-')+'<br>'+(v.lon!=null?v.lon.toFixed(3):'-')+'</td>'+
       '<td class="'+speedClass(v.speed)+'">'+(v.speed!=null?v.speed.toFixed(1)+' kn':'—')+'</td>'+
@@ -396,6 +405,92 @@ function updateTable(){
   }).join('');
 }
 
+function selectVesselWithTrail(mmsi) {
+  selectVessel(mmsi);
+  fetchTrail(mmsi);
+}
+
+function fetchTrail(mmsi) {
+  var v=vessels[mmsi];
+  if(!v)return;
+  var name=v.name||'MMSI '+mmsi;
+  document.getElementById('trail-name').textContent=name+' — loading trail…';
+  document.getElementById('trail-panel').style.display='block';
+  document.getElementById('trail-info').textContent='Fetching position history…';
+
+  fetch(DB_API+'?action=history&mmsi='+mmsi+'&hours=336') // 14 days
+    .then(function(r){return r.json()})
+    .then(function(data){
+      trailData=data.points||[];
+      if(!trailData.length){
+        document.getElementById('trail-info').textContent='No history found for this vessel yet.';
+        return;
+      }
+      document.getElementById('trail-name').textContent=name;
+      document.getElementById('trail-info').textContent=trailData.length+' positions over the last 14 days';
+      document.getElementById('trail-slider').max=trailData.length-1;
+      document.getElementById('trail-slider').value=trailData.length-1;
+      drawTrail(trailData);
+      showTrailPoint(trailData.length-1);
+    })
+    .catch(function(e){
+      document.getElementById('trail-info').textContent='Error loading trail: '+e.message;
+    });
+}
+
+function drawTrail(points) {
+  clearTrailLayers();
+  if(!points.length)return;
+
+  // Draw polyline
+  var latlngs=points.map(function(p){return[parseFloat(p.lat),parseFloat(p.lon)]});
+  trailLayer=L.polyline(latlngs,{color:'#1D9E75',weight:2,opacity:0.7}).addTo(mapInst);
+
+  // Start marker
+  var startIcon=L.divIcon({className:'',html:'<div style="font-size:14px">🟢</div>',iconSize:[16,16],iconAnchor:[8,8]});
+  trailMarkers.push(L.marker(latlngs[0],{icon:startIcon}).addTo(mapInst).bindPopup('Start: '+points[0].recorded_at));
+
+  // End marker
+  var endIcon=L.divIcon({className:'',html:'<div style="font-size:14px">🔴</div>',iconSize:[16,16],iconAnchor:[8,8]});
+  var last=latlngs[latlngs.length-1];
+  trailMarkers.push(L.marker(last,{icon:endIcon}).addTo(mapInst).bindPopup('Last seen: '+points[points.length-1].recorded_at));
+
+  mapInst.fitBounds(trailLayer.getBounds(),{padding:[40,40]});
+}
+
+function scrubTrail(idx) {
+  idx=parseInt(idx);
+  showTrailPoint(idx);
+  // Pan map to that point
+  if(trailData[idx]){
+    mapInst.panTo([parseFloat(trailData[idx].lat),parseFloat(trailData[idx].lon)]);
+  }
+}
+
+function showTrailPoint(idx) {
+  var p=trailData[idx];
+  if(!p)return;
+  var info=[
+    p.recorded_at,
+    'Pos: '+parseFloat(p.lat).toFixed(4)+', '+parseFloat(p.lon).toFixed(4),
+    p.speed!=null?'Speed: '+parseFloat(p.speed).toFixed(1)+' kn':'',
+    p.cog!=null?'Course: '+parseFloat(p.cog).toFixed(1)+'°':'',
+    p.destination?'Dest: '+p.destination:''
+  ].filter(Boolean).join('  |  ');
+  document.getElementById('trail-point-info').textContent=info;
+}
+
+function clearTrailLayers() {
+  if(trailLayer){mapInst.removeLayer(trailLayer);trailLayer=null;}
+  trailMarkers.forEach(function(m){mapInst.removeLayer(m)});
+  trailMarkers=[];
+}
+
+function clearTrail() {
+  clearTrailLayers();
+  trailData=[];
+  document.getElementById('trail-panel').style.display='none';
+}
 </script>
 </body>
 </html>
