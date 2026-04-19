@@ -248,6 +248,14 @@ function doConnect(){
     mapInst=L.map('map').setView(selCenter,selZoom);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© <a href="https://openstreetmap.org">OpenStreetMap</a>',maxZoom:18}).addTo(mapInst);
 
+    // When zoomed in with temp on, load a fine grid for the visible area
+    mapInst.on('moveend zoomend', function() {
+      if(!tempEnabled) return;
+      var zoom = mapInst.getZoom();
+      if(zoom < 7) return; // only load fine grid when zoomed in
+      loadVisibleAreaGrid();
+    });
+
     // Click on water to get temp at that spot
     mapInst.on('click', function(e) {
       if(!tempEnabled) return;
@@ -705,6 +713,51 @@ function removeTempLegend() {
   if(sstLegend) { sstLegend.remove(); sstLegend = null; }
 }
 
+// ── Dynamic fine grid for zoomed-in view ─────────────────────────────────────
+var visibleGridLoaded = false;
+var lastZoomBounds = null;
+
+function loadVisibleAreaGrid() {
+  if(!tempEnabled||!mapInst) return;
+  var bounds = mapInst.getBounds();
+  var boundsStr = bounds.toBBoxString();
+  if(boundsStr === lastZoomBounds) return; // same view, skip
+  lastZoomBounds = boundsStr;
+
+  var south = bounds.getSouth(), north = bounds.getNorth();
+  var west  = bounds.getWest(),  east  = bounds.getEast();
+
+  // Build a fine 8x8 grid across the visible area
+  var step = Math.max((north-south)/7, (east-west)/7);
+  var pts  = [];
+  for(var lat=south+step/2; lat<north; lat+=step) {
+    for(var lon=west+step/2; lon<east; lon+=step) {
+      var rlat = parseFloat(lat.toFixed(3));
+      var rlon = parseFloat(lon.toFixed(3));
+      // Only fetch ocean points (rough check - not too far inland)
+      pts.push([rlat, rlon]);
+    }
+  }
+
+  // Fire requests staggered
+  pts.forEach(function(pt, i) {
+    setTimeout(function() {
+      if(!tempEnabled) return;
+      fetch('/sst?lat='+pt[0]+'&lon='+pt[1])
+        .then(function(r){return r.json();})
+        .then(function(data){
+          if(!tempEnabled) return;
+          var rows=data&&data.table&&data.table.rows;
+          if(!rows||!rows[0]||rows[0][3]==null) return;
+          var tempC=parseFloat(rows[0][3]);
+          if(isNaN(tempC)||tempC<-2||tempC>40) return;
+          var tempF=parseFloat((tempC*9/5+32).toFixed(1));
+          addBuoyMarker(pt[0],pt[1],tempF,'Water temp at '+pt[0]+', '+pt[1],'Satellite SST');
+        }).catch(function(){});
+    }, i*150);
+  });
+}
+
 // ── Toggle vessels visibility ──────────────────────────────────────────────────
 var vesselsVisible = true;
 function toggleVessels() {
@@ -862,24 +915,26 @@ function addBuoyMarker(lat, lon, tempF, name, time) {
   if(!tempEnabled||!mapInst)return;
   var color = tempColor(tempF);
   var tempC = ((tempF-32)*5/9).toFixed(1);
+  // Small compact label - just the number, color coded
   var html = '<div style="'
-    +'background:'+color+';'
-    +'color:#fff;'
+    +'color:'+color+';'
+    +'font-size:11px;'
     +'font-weight:700;'
-    +'font-size:13px;'
-    +'padding:3px 7px;'
-    +'border-radius:20px;'
-    +'border:2px solid rgba(255,255,255,0.8);'
-    +'box-shadow:0 2px 6px rgba(0,0,0,0.6);'
+    +'font-family:monospace;'
+    +'background:rgba(0,0,0,0.55);'
+    +'padding:1px 4px;'
+    +'border-radius:3px;'
+    +'border:1px solid '+color+';'
     +'white-space:nowrap;'
-    +'text-shadow:0 1px 2px rgba(0,0,0,0.5);'
+    +'pointer-events:auto;'
     +'cursor:pointer;'
-    +'">🌡️ '+tempF.toFixed(1)+'°F</div>';
+    +'line-height:1.4;'
+    +'">'+tempF.toFixed(1)+'°F</div>';
   var icon = L.divIcon({
     className: '',
     html: html,
-    iconSize: [90, 28],
-    iconAnchor: [45, 14]
+    iconSize: [55, 18],
+    iconAnchor: [27, 9]
   });
   var m = L.marker([lat,lon],{icon:icon,zIndexOffset:-100})
     .addTo(mapInst)
