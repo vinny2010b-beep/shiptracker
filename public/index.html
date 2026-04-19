@@ -126,6 +126,7 @@ tr.selected td{background:rgba(29,158,117,.12)}
     <div class="stat-pill"><span class="val" id="st-msgs">0</span><span class="lbl">msgs</span></div>
     <div class="stat-pill"><div class="status-dot" id="status-dot"></div><span id="st-status">—</span></div>
     <button class="disc-btn" id="temp-btn" onclick="toggleTemp()" title="Toggle water temperature overlay">🌡️ Temp</button>
+    <button class="disc-btn" id="vessels-btn" onclick="toggleVessels()" title="Hide/show vessels">🚢 Vessels</button>
     <button class="disc-btn" onclick="doDisconnect()">Disconnect</button>
   </div>
   <div class="api-err" id="api-err"></div>
@@ -392,7 +393,7 @@ function selectVessel(mmsi){
   if(row){row.classList.add('selected');row.scrollIntoView({block:'nearest'})}
   updateDetail(mmsi);
   var v=vessels[mmsi];
-  if(v&&v.lat!=null)mapInst.panTo([v.lat,v.lon]);
+  if(v&&v.lat!=null)mapInst.panTo([v.lat,v.lon],{animate:true});
 }
 
 function updateDetail(mmsi){
@@ -533,7 +534,7 @@ function drawTrail(points) {
   var last=latlngs[latlngs.length-1];
   trailMarkers.push(L.marker(last,{icon:endIcon}).addTo(mapInst).bindPopup('Last seen: '+points[points.length-1].recorded_at));
 
-  mapInst.fitBounds(trailLayer.getBounds(),{padding:[40,40]});
+  mapInst.fitBounds(trailLayer.getBounds(),{padding:[60,60],maxZoom:10});
 }
 
 function scrubTrail(idx) {
@@ -569,33 +570,96 @@ function clearTrail() {
   trailData=[];
   document.getElementById('trail-panel').style.display='none';
 }
+// ── Toggle vessels visibility ──────────────────────────────────────────────────
+var vesselsVisible = true;
+function toggleVessels() {
+  vesselsVisible = !vesselsVisible;
+  var btn = document.getElementById('vessels-btn');
+  Object.values(markers).forEach(function(m) {
+    if(vesselsVisible) mapInst.addLayer(m);
+    else mapInst.removeLayer(m);
+  });
+  btn.textContent = vesselsVisible ? '🚢 Vessels' : '🚢 Hidden';
+  btn.style.opacity = vesselsVisible ? '1' : '0.5';
+}
+
 // ── Water Temperature ─────────────────────────────────────────────────────────
 var tempLayerSST = null;
 var buoyMarkers  = [];
 var tempEnabled  = false;
 
 // East Coast NOAA buoy station IDs (CO-OPS stations with water temp)
-var BUOY_STATIONS = [
+// CO-OPS coastal stations
+var COOPS_STATIONS = [
   {id:'8443970',name:'Boston, MA'},
   {id:'8447930',name:'Woods Hole, MA'},
+  {id:'8447386',name:'Fall River, MA'},
+  {id:'8449130',name:'Nantucket, MA'},
+  {id:'8452660',name:'Newport, RI'},
   {id:'8461490',name:'New London, CT'},
+  {id:'8465705',name:'New Haven, CT'},
+  {id:'8510560',name:'Montauk, NY'},
   {id:'8516945',name:'Kings Point, NY'},
   {id:'8518750',name:'The Battery, NY'},
+  {id:'8519483',name:'Bergen Point, NY'},
+  {id:'8530973',name:'Raritan Bay, NJ'},
   {id:'8531680',name:'Sandy Hook, NJ'},
   {id:'8534720',name:'Atlantic City, NJ'},
+  {id:'8536110',name:'Cape May, NJ'},
   {id:'8557380',name:'Lewes, DE'},
   {id:'8570283',name:'Ocean City Inlet, MD'},
   {id:'8574680',name:'Baltimore, MD'},
+  {id:'8571892',name:'Cambridge, MD'},
+  {id:'8594900',name:'Washington DC'},
+  {id:'8632200',name:'Kiptopeke, VA'},
   {id:'8638610',name:'Sewells Point, VA'},
+  {id:'8637689',name:'Yorktown, VA'},
   {id:'8651370',name:'Duck, NC'},
+  {id:'8654467',name:'USCG Station, NC'},
   {id:'8656483',name:'Beaufort, NC'},
+  {id:'8658120',name:'Wilmington, NC'},
   {id:'8661070',name:'Springmaid Pier, SC'},
+  {id:'8665530',name:'Charleston, SC'},
+  {id:'8670870',name:'Fort Pulaski, GA'},
+  {id:'8679511',name:'Brunswick, GA'},
   {id:'8720218',name:'Mayport, FL'},
+  {id:'8721604',name:'Trident Pier, FL'},
   {id:'8722670',name:'Lake Worth Pier, FL'},
+  {id:'8723214',name:'Virginia Key, FL'},
   {id:'8724580',name:'Key West, FL'},
+  {id:'8725110',name:'Naples, FL'},
   {id:'8726520',name:'St. Petersburg, FL'},
-  {id:'8736897',name:'Dauphin Island, AL'},
 ];
+
+// NDBC offshore buoys - fetch via NDBC text format
+var NDBC_BUOYS = [
+  {id:'44013',name:'Boston 16nm',lat:42.346,lon:-70.651},
+  {id:'44025',name:'S of Long Island',lat:40.251,lon:-73.164},
+  {id:'44065',name:'New York Harbor',lat:40.369,lon:-73.703},
+  {id:'44009',name:'Delaware Bay',lat:38.457,lon:-74.702},
+  {id:'44025',name:'S of LI 40nm',lat:40.251,lon:-73.164},
+  {id:'41047',name:'NE of Bahamas',lat:27.514,lon:-71.494},
+  {id:'41048',name:'W Hatteras',lat:31.839,lon:-69.588},
+  {id:'41046',name:'SE Hatteras',lat:23.822,lon:-75.148},
+  {id:'41004',name:'EDISTO',lat:32.501,lon:-79.099},
+  {id:'41008',name:'Grays Reef',lat:31.400,lon:-80.868},
+  {id:'41010',name:'Canaveral E',lat:28.906,lon:-78.471},
+  {id:'41047',name:'NE Bahamas',lat:27.514,lon:-71.494},
+  {id:'44014',name:'Virginia Beach',lat:36.611,lon:-74.836},
+  {id:'44017',name:'Montauk Pt',lat:40.692,lon:-72.046},
+  {id:'44020',name:'Nantucket Sound',lat:41.493,lon:-70.179},
+  {id:'44027',name:'Jonesport, ME',lat:44.270,lon:-67.310},
+  {id:'44030',name:'Pemaquid Pt, ME',lat:43.980,lon:-69.329},
+  {id:'44033',name:'Frenchman Bay, ME',lat:44.416,lon:-68.113},
+  {id:'44034',name:'Upper Slope',lat:43.522,lon:-66.312},
+  {id:'44037',name:'Jordan Basin',lat:43.506,lon:-67.937},
+  {id:'44038',name:'Jeffreys Ledge',lat:42.966,lon:-69.768},
+  {id:'44098',name:'Jeffrey's Ledge',lat:42.798,lon:-69.317},
+  {id:'44066',name:'E of Delaware Bay',lat:39.618,lon:-72.644},
+  {id:'44072',name:'SW of Bermuda',lat:31.887,lon:-64.919},
+];
+
+var BUOY_STATIONS = COOPS_STATIONS;
 
 function tempColor(f) {
   // Map temperature in F to a color: cold=blue, cool=teal, warm=orange, hot=red
@@ -643,11 +707,26 @@ function removeTempOverlay() {
   buoyMarkers = [];
 }
 
+function addBuoyMarker(lat, lon, tempF, name, time) {
+  if(!tempEnabled||!mapInst)return;
+  var color = tempColor(tempF);
+  var tempC = ((tempF-32)*5/9).toFixed(1);
+  var icon = L.divIcon({
+    className: 'buoy-label',
+    html: '<span style="color:'+color+';font-weight:700">'+tempF.toFixed(1)+'°F</span>',
+    iconAnchor: [22, 10]
+  });
+  var m = L.marker([lat,lon],{icon:icon,zIndexOffset:-100})
+    .addTo(mapInst)
+    .bindPopup('<b>'+name+'</b><br>Water temp: <b style="color:'+color+'">'+tempF.toFixed(1)+'°F / '+tempC+'°C</b>'+(time?'<br><small>'+time+'</small>':''));
+  buoyMarkers.push(m);
+}
+
 function loadBuoyTemps() {
   buoyMarkers.forEach(function(m){ mapInst.removeLayer(m); });
   buoyMarkers = [];
-  var loaded = 0;
 
+  // CO-OPS coastal stations
   BUOY_STATIONS.forEach(function(st) {
     fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station='+st.id+'&product=water_temperature&units=english&time_zone=gmt&format=json')
       .then(function(r){ return r.json(); })
@@ -656,29 +735,37 @@ function loadBuoyTemps() {
         var reading = data && data.data && data.data[0];
         if(!reading || reading.v === undefined) return;
         var tempF = parseFloat(reading.v);
-        var tempC = ((tempF - 32) * 5/9).toFixed(1);
-        var color = tempColor(tempF);
-        var time  = reading.t;
-
-        // Fetch station info for lat/lon
-        fetch('https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/'+st.id+'.json?type=waterlevels&units=english')
+        fetch('https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/'+st.id+'.json')
           .then(function(r){ return r.json(); })
           .then(function(meta) {
-            if(!tempEnabled) return;
-            var lat = meta.stations && meta.stations[0] && meta.stations[0].lat;
-            var lon = meta.stations && meta.stations[0] && meta.stations[0].lng;
-            if(!lat || !lon) return;
-
-            var icon = L.divIcon({
-              className: 'buoy-label',
-              html: '<span style="color:'+color+';font-weight:700">'+tempF.toFixed(1)+'°F</span> <span style="opacity:.7">'+tempC+'°C</span>',
-              iconAnchor: [30, 10]
-            });
-            var m = L.marker([lat, lon], { icon: icon, zIndexOffset: -100 })
-              .addTo(mapInst)
-              .bindPopup('<b>'+st.name+'</b><br>Water temp: <b style="color:'+color+'">'+tempF.toFixed(1)+'°F ('+tempC+'°C)</b><br><small>'+time+' UTC</small>');
-            buoyMarkers.push(m);
+            var s = meta.stations && meta.stations[0];
+            if(s && s.lat && s.lng) addBuoyMarker(s.lat, s.lng, tempF, st.name, reading.t+' UTC');
           }).catch(function(){});
+      }).catch(function(){});
+  });
+
+  // NDBC offshore buoys - parse text format
+  NDBC_BUOYS.forEach(function(buoy) {
+    fetch('https://www.ndbc.noaa.gov/data/realtime2/'+buoy.id+'.txt')
+      .then(function(r){ return r.text(); })
+      .then(function(txt) {
+        if(!tempEnabled) return;
+        var lines = txt.trim().split('\n');
+        // Skip 2 header lines, find WTMP column
+        var header = lines[0].replace(/^#/,'').trim().split(/\s+/);
+        var wtmpIdx = header.indexOf('WTMP');
+        if(wtmpIdx === -1) return;
+        // Find first valid data line
+        for(var i=2; i<Math.min(6,lines.length); i++) {
+          var cols = lines[i].trim().split(/\s+/);
+          var wtmp = parseFloat(cols[wtmpIdx]);
+          if(!isNaN(wtmp) && wtmp < 99 && wtmp > 0) {
+            var tempF = (wtmp * 9/5) + 32; // convert C to F
+            var timeStr = cols[0]+'-'+cols[1]+'-'+cols[2]+' '+cols[3]+':'+cols[4]+' UTC';
+            addBuoyMarker(buoy.lat, buoy.lon, tempF, buoy.name+' (NDBC '+buoy.id+')', timeStr);
+            break;
+          }
+        }
       }).catch(function(){});
   });
 }
