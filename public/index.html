@@ -894,7 +894,8 @@ function loadTempOverlay() {
     {
       opacity:     0.6,
       attribution: 'NASA GIBS / JPL MUR SST',
-      maxZoom:     7,
+      maxNativeZoom: 7,
+      maxZoom:     18,
       tileSize:    256,
       errorTileUrl: ''
     }
@@ -960,6 +961,7 @@ function addBuoyMarker(lat, lon, tempF, name, time, isZoom) {
   var m = L.marker([lat,lon],{icon:icon,zIndexOffset:-100})
     .addTo(mapInst)
     .bindPopup('<b>'+name+'</b><br>Water temp: <b style="color:'+color+'">'+tempF.toFixed(1)+'°F / '+tempC+'°C</b>'+(time?'<br><small>'+time+'</small>':''));
+  if(isZoom) m._isZoomMarker = true;
   buoyMarkers.push(m);
 }
 
