@@ -744,27 +744,25 @@ function loadBuoyTemps() {
       }).catch(function(){});
   });
 
-  // NDBC offshore buoys - parse text format
+  // NDBC offshore buoys - fetch JSON from NOAA ERDDAP
   NDBC_BUOYS.forEach(function(buoy) {
-    fetch('https://www.ndbc.noaa.gov/data/realtime2/'+buoy.id+'.txt')
+    var url = 'https://www.ndbc.noaa.gov/data/realtime2/' + buoy.id + '.txt';
+    fetch(url)
       .then(function(r){ return r.text(); })
       .then(function(txt) {
         if(!tempEnabled) return;
         var lines = txt.trim().split('\n');
-        // Skip 2 header lines, find WTMP column
-        var header = lines[0].replace(/^#/,'').trim().split(/\s+/);
+        if(lines.length < 3) return;
+        var header = lines[0].replace(/^#/g,'').trim().split(/[ \t]+/);
         var wtmpIdx = header.indexOf('WTMP');
-        if(wtmpIdx === -1) return;
-        // Find first valid data line
-        for(var i=2; i<Math.min(6,lines.length); i++) {
-          var cols = lines[i].trim().split(/\s+/);
+        if(wtmpIdx < 0) return;
+        for(var i=2; i<Math.min(8,lines.length); i++) {
+          var cols = lines[i].trim().split(/[ \t]+/);
           var wtmp = parseFloat(cols[wtmpIdx]);
-          if(!isNaN(wtmp) && wtmp < 99 && wtmp > 0) {
-            var tempF = (wtmp * 9/5) + 32; // convert C to F
-            var timeStr = cols[0]+'-'+cols[1]+'-'+cols[2]+' '+cols[3]+':'+cols[4]+' UTC';
-            addBuoyMarker(buoy.lat, buoy.lon, tempF, buoy.name+' (NDBC '+buoy.id+')', timeStr);
-            break;
-          }
+          if(isNaN(wtmp)||wtmp>98||wtmp<=0) continue;
+          var tempF = parseFloat((wtmp*9/5+32).toFixed(1));
+          addBuoyMarker(buoy.lat, buoy.lon, tempF, buoy.name+' (NDBC '+buoy.id+')', 'Offshore buoy');
+          break;
         }
       }).catch(function(){});
   });
