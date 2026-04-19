@@ -267,6 +267,8 @@ function handleMsg(msg){
 
   var meta=msg.MetaData||{};
   var mmsi=meta.MMSI;
+  // Log first 3 messages to console
+  if(msgCount<=3){console.log('MSG#'+msgCount,JSON.stringify(msg).substring(0,300));}
   if(!mmsi)return;
 
   if(!vessels[mmsi])vessels[mmsi]={mmsi:mmsi,updated:Date.now()};
@@ -274,9 +276,9 @@ function handleMsg(msg){
   v.updated=Date.now();
 
   // MetaData latitude/longitude are lowercase per API docs
-  var lat=(typeof meta.latitude==='number')?meta.latitude:null;
-  var lon=(typeof meta.longitude==='number')?meta.longitude:null;
-  if(lat!==null&&lon!==null&&Math.abs(lat)>0.001&&Math.abs(lon)>0.001){v.lat=lat;v.lon=lon}
+  var lat=parseFloat(meta.latitude||meta.Latitude||0)||null;
+  var lon=parseFloat(meta.longitude||meta.Longitude||0)||null;
+  if(lat&&lon&&Math.abs(lat)>0.001&&Math.abs(lon)>0.001){v.lat=lat;v.lon=lon}
 
   var name=(meta.ShipName||'').trim();
   if(name)v.name=name;
