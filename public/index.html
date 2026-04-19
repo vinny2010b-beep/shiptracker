@@ -914,7 +914,7 @@ function loadBuoyTemps() {
 
   // NDBC offshore buoys - fetch JSON from NOAA ERDDAP
   NDBC_BUOYS.forEach(function(buoy) {
-    var url = 'https://www.ndbc.noaa.gov/data/realtime2/' + buoy.id + '.txt';
+    var url = '/ndbc?id=' + buoy.id;
     fetch(url)
       .then(function(r){ return r.text(); })
       .then(function(txt) {
