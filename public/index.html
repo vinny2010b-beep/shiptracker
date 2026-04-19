@@ -606,8 +606,7 @@ function loadERDDAPGrid() {
 
   gridPoints.forEach(function(pt) {
     var lat = pt[0], lon = pt[1];
-    var url = 'https://coastwatch.pfeg.noaa.gov/erddap/griddap/jplMURSST41.json'
-      +'?analysed_sst%5B('+dateStr+')%5D%5B('+lat+')%5D%5B('+lon+')%5D';
+    var url = '/sst?lat='+lat+'&lon='+lon;
 
     fetch(url)
       .then(function(r){ return r.json(); })
