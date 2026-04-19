@@ -237,4 +237,15 @@ wss.on('connection', (browser) => {
   connectUpstream();
 });
 
+// Keep Render free tier alive — ping self every 14 minutes
+const SELF_URL = process.env.RENDER_EXTERNAL_URL || null;
+if (SELF_URL) {
+  setInterval(() => {
+    https.get(SELF_URL + '/health', (r) => {
+      console.log('[keepalive] ping ok', r.statusCode);
+    }).on('error', (e) => console.log('[keepalive] ping failed:', e.message));
+  }, 14 * 60 * 1000);
+  console.log('[keepalive] started, pinging', SELF_URL);
+}
+
 server.listen(PORT, () => console.log(`Ship tracker on http://localhost:${PORT}`));
