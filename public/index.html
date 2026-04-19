@@ -793,20 +793,19 @@ function loadTempOverlay() {
   var dy = String(yesterday.getUTCDate()).padStart(2,'0');
   var sstDate = yr+'-'+mo+'-'+dy+'T00:00:00Z';
 
-  // Primary: ERDDAP WMS with time parameter
-  tempLayerSST = L.tileLayer.wms('https://coastwatch.pfeg.noaa.gov/erddap/wms/jplMURSST41/request', {
-    layers:      'jplMURSST41:analysed_sst',
-    format:      'image/png',
-    transparent: true,
-    opacity:     0.5,
-    version:     '1.3.0',
-    time:        sstDate,
-    colorscalerange: '-2,32',
-    belowmincolor:   'extend',
-    abovemaxcolor:   'extend',
-    styles:      'boxfill/rainbow',
-    attribution: 'NOAA/JPL MUR SST'
-  });
+  // NASA GIBS WMTS - GHRSST MUR Sea Surface Temperature
+  // Native EPSG:3857, works at zoom 1-7, updated daily
+  // Colors: blue=cold, red=warm (same scale as buoy markers)
+  tempLayerSST = L.tileLayer(
+    'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GHRSST_L4_MUR_Sea_Surface_Temperature/default/'+yr+'-'+mo+'-'+dy+'/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png',
+    {
+      opacity:     0.6,
+      attribution: 'NASA GIBS / JPL MUR SST',
+      maxZoom:     7,
+      tileSize:    256,
+      errorTileUrl: ''
+    }
+  );
   tempLayerSST.addTo(mapInst);
 
   // Add a temperature color legend
