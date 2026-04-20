@@ -94,6 +94,7 @@ app.get('/sst', (req, res) => {
 // ── ERDDAP SST batch — cached for 6 hours ───────────────────────────────────
 let sstCache = null;
 let sstCacheTime = 0;
+// URL fixed - clear any bad cache on startup
 const SST_CACHE_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 function fetchSSTGrid(callback) {
@@ -103,9 +104,16 @@ function fetchSSTGrid(callback) {
     return callback(null, sstCache);
   }
 
-  const d = new Date(); d.setDate(d.getDate() - 1);
-  const date = d.toISOString().substring(0, 10) + 'T00:00:00Z';
-  const url = `https://coastwatch.pfeg.noaa.gov/erddap/griddap/jplMURSST41.csv?analysed_sst%5B(${date})%5D%5B(47):50:(24)%5D%5B(-60):50:(-82)%5D`;
+  // Try up to 4 days back to find available data
+  let date = null, url = null;
+  for (let daysBack = 2; daysBack <= 5; daysBack++) {
+    const d = new Date(); d.setDate(d.getDate() - daysBack);
+    date = d.toISOString().substring(0, 10) + 'T00:00:00Z';
+    // lat: south(24) to north(47), stride 50 = ~0.5deg spacing
+    // lon: west(-82) to east(-60), stride 50 = ~0.5deg spacing
+    url = `https://coastwatch.pfeg.noaa.gov/erddap/griddap/jplMURSST41.csv?analysed_sst%5B(${date})%5D%5B(24.0):50:(47.0)%5D%5B(-82.0):50:(-60.0)%5D`;
+    break; // start with 2 days back, server will retry if empty
+  }
 
   console.log('[sst-grid] fetching from ERDDAP...');
   const req = https.get(url, (r) => {
