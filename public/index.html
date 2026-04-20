@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYPE html><!-- v2.1 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -877,7 +877,7 @@ function fetchSST(lat, lon, attempt, isZoom) {
         addBuoyMarker(lat, lon, tempF, 'Satellite SST', 'yesterday', isZoom);
       } catch(e) { /* silently skip bad responses */ }
     })
-    .catch(function() { /* network error — skip silently */ });
+    .catch(function() {});
 }
 
 function addBuoyMarker(lat, lon, tempF, name, time, isZoom) {
