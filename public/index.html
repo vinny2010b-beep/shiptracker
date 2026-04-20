@@ -119,12 +119,13 @@ tr.selected td{background:rgba(29,158,117,.12)}
 </div>
 <div id="dashboard">
   <div class="topbar">
-    <span class="topbar-logo">⚓ AIS Tracker</span><span style="font-size:10px;color:#444;font-family:monospace;margin-left:4px">v2.4</span>
+    <span class="topbar-logo">⚓ AIS Tracker</span><span style="font-size:10px;color:#444;font-family:monospace;margin-left:4px">v2.5</span>
     <span class="topbar-region" id="topbar-region"></span>
     <div class="topbar-spacer"></div>
     <div class="stat-pill"><div class="pulse" id="pulse-dot" style="display:none"></div><span class="val" id="st-vessels">0</span><span class="lbl">vessels</span></div>
     <div class="stat-pill"><span class="val" id="st-msgs">0</span><span class="lbl">msgs</span></div>
     <div class="stat-pill"><div class="status-dot" id="status-dot"></div><span id="st-status">—</span></div>
+    <button class="disc-btn" id="bathy-btn" onclick="toggleBathy()" title="Toggle ocean floor depth">🌊 Depth</button>
     <button class="disc-btn" id="fish-btn" onclick="toggleFishing()" title="Toggle fishing areas">🎣 Fishing</button>
     <button class="disc-btn" id="temp-btn" onclick="toggleTemp()" title="Toggle water temperature overlay">🌡️ Temp</button>
     <button class="disc-btn" id="vessels-btn" onclick="toggleVessels()" title="Hide/show vessels">🚢 Vessels</button>
@@ -1049,6 +1050,44 @@ function loadFishingAreas() {
   // Pan map to show all fishing areas
   var group = L.featureGroup(fishingMarkers);
   mapInst.fitBounds(group.getBounds().pad(0.3), { maxZoom: 10 });
+}
+
+// ── Ocean Floor Bathymetry ────────────────────────────────────────────────────
+var bathyEnabled = false;
+var bathyLayer   = null;
+
+function toggleBathy() {
+  bathyEnabled = !bathyEnabled;
+  var btn = document.getElementById('bathy-btn');
+  if(bathyEnabled) {
+    btn.style.borderColor = '#00aaff';
+    btn.style.color = '#00aaff';
+    loadBathyLayer();
+  } else {
+    btn.style.borderColor = '';
+    btn.style.color = '';
+    if(bathyLayer){ mapInst.removeLayer(bathyLayer); bathyLayer=null; }
+  }
+}
+
+function loadBathyLayer() {
+  if(bathyLayer) return;
+
+  // NOAA NCEI GMRT (Global Multi-Resolution Topography) WMS
+  // Shows ocean floor depth as a color gradient — deep=dark blue, shallow=light
+  bathyLayer = L.tileLayer.wms('https://www.gmrt.org/services/mapserver/wms_merc?', {
+    layers:      'GMRT',
+    format:      'image/png',
+    transparent: true,
+    opacity:     0.55,
+    version:     '1.1.1',
+    attribution: 'NOAA GMRT Bathymetry'
+  });
+
+  bathyLayer.addTo(mapInst);
+
+  // Move bathy below vessels but above base map
+  bathyLayer.setZIndex(200);
 }
 
 </script>
