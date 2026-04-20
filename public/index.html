@@ -119,7 +119,7 @@ tr.selected td{background:rgba(29,158,117,.12)}
 </div>
 <div id="dashboard">
   <div class="topbar">
-    <span class="topbar-logo">⚓ AIS Tracker</span><span style="font-size:10px;color:#444;font-family:monospace;margin-left:4px">v2.6</span>
+    <span class="topbar-logo">⚓ AIS Tracker</span><span style="font-size:10px;color:#444;font-family:monospace;margin-left:4px">v2.7</span>
     <span class="topbar-region" id="topbar-region"></span>
     <div class="topbar-spacer"></div>
     <div class="stat-pill"><div class="pulse" id="pulse-dot" style="display:none"></div><span class="val" id="st-vessels">0</span><span class="lbl">vessels</span></div>
@@ -1010,14 +1010,187 @@ function loadBuoyTemps() {
 var fishingEnabled  = false;
 var fishingMarkers  = [];
 
-var FISHING_AREAS = [
-  { name: 'Hudson Canyon (Mouth)',     lat: 39 + 41.049/60, lon: -(72 + 29.015/60) },
-  { name: 'Hudson Canyon (Tip/Upper)', lat: 39 + 40.956/60, lon: -(72 + 28.865/60) },
-  { name: 'West Atlantis Canyon',      lat: 40 + 4.500/60,  lon: -(70 + 27.000/60) },
-  { name: 'Atlantis Canyon',           lat: 40 + 4.40/60,   lon: -(70 + 11.64/60)  },
-  { name: 'East Atlantis Canyon',      lat: 39 + 57.500/60, lon: -(69 + 55.000/60) },
-  { name: 'Veatch Canyon',             lat: 40 + 0.000/60,  lon: -(69 + 37.000/60) },
+// Canyon spots
+var CANYON_SPOTS = [
+  { name: 'Hudson Canyon (Mouth)',     type:'CANYON', depth:0, lat: 39 + 41.049/60, lon: -(72 + 29.015/60) },
+  { name: 'Hudson Canyon (Tip/Upper)', type:'CANYON', depth:0, lat: 39 + 40.956/60, lon: -(72 + 28.865/60) },
+  { name: 'West Atlantis Canyon',      type:'CANYON', depth:0, lat: 40 + 4.500/60,  lon: -(70 + 27.000/60) },
+  { name: 'Atlantis Canyon',           type:'CANYON', depth:0, lat: 40 + 4.40/60,   lon: -(70 + 11.64/60)  },
+  { name: 'East Atlantis Canyon',      type:'CANYON', depth:0, lat: 39 + 57.500/60, lon: -(69 + 55.000/60) },
+  { name: 'Veatch Canyon',             type:'CANYON', depth:0, lat: 40 + 0.000/60,  lon: -(69 + 37.000/60) },
 ];
+
+// NC/Mid-Atlantic fishing spots
+var NC_FISHING_SPOTS = [
+  {name:"ATLAS TANKER WRECK",type:"WRECK",depth:125,lat:34.529,lon:-76.2415},
+  {name:"CASSIMER WRECK R 2",type:"WRECK",depth:107,lat:33.967,lon:-77.02933},
+  {name:"EM CLARK WRECK",type:"WRECK",depth:180,lat:34.85333,lon:-75.53833},
+  {name:"EMPIRE GEM WRECK",type:"WRECK",depth:126,lat:35.03,lon:-75.47517},
+  {name:"F ABRAMS WRECK",type:"WRECK",depth:78,lat:34.99017,lon:-75.7325},
+  {name:"FAIRWAY WRECK",type:"WRECK",depth:66,lat:33.74583,lon:-77.7},
+  {name:"GRAINGER WRECK",type:"WRECK",depth:113,lat:33.925,lon:-77.23333},
+  {name:"HUTTON WRECK",type:"WRECK",depth:65,lat:34.499,lon:-76.8975},
+  {name:"JOHN D GILL WRECK",type:"WRECK",depth:85,lat:33.8725,lon:-77.4835},
+  {name:"KESHENA WRECK",type:"WRECK",depth:84,lat:34.99917,lon:-75.76367},
+  {name:"MALCHESE WRECK",type:"WRECK",depth:126,lat:34.6785,lon:-75.78717},
+  {name:"NAECO WRECK 1",type:"WRECK",depth:140,lat:33.921,lon:-76.51833},
+  {name:"NAECO WRECK 2",type:"WRECK",depth:140,lat:34.024,lon:-76.65},
+  {name:"PAN AM WRECK",type:"WRECK",depth:415,lat:34.14933,lon:-76.11767},
+  {name:"PAPOOSE SUB WRECK",type:"WRECK",depth:130,lat:34.14433,lon:-76.653},
+  {name:"PORTLAND WRECK",type:"WRECK",depth:55,lat:34.496,lon:-76.42867},
+  {name:"PROTEUS WRECK",type:"WRECK",depth:126,lat:34.76633,lon:-75.78367},
+  {name:"USS PETEROFF WRECK",type:"WRECK",depth:48,lat:33.9,lon:-77.81667},
+  {name:"WELDON HALL WRECK",type:"WRECK",depth:78,lat:34.28417,lon:-77.34633},
+  {name:"AR140 BARGE 1",type:"WRECK",depth:57,lat:35.9,lon:-75.52583},
+  {name:"AR140 BARGE 2",type:"WRECK",depth:57,lat:35.94017,lon:-75.52583},
+  {name:"AR145 LANDING CRAFT",type:"WRECK",depth:65,lat:35.90067,lon:-75.39267},
+  {name:"AR145 VESSEL ADVANCE II",type:"WRECK",depth:65,lat:35.9,lon:-75.392},
+  {name:"AR160 SHIP DIONYSUS",type:"WRECK",depth:66,lat:35.73367,lon:-75.44067},
+  {name:"AR160 SHIP ZANE GRAY",type:"WRECK",depth:66,lat:35.72483,lon:-75.441},
+  {name:"AR220 BOX CARS",type:"WRECK",depth:64,lat:35.134,lon:-77.673},
+  {name:"AR225 BOX CARS",type:"WRECK",depth:69,lat:35.1075,lon:-77.65233},
+  {name:"AR230 TUG MR JC",type:"WRECK",depth:72,lat:35.12633,lon:-75.70967},
+  {name:"AR230 FREIGHTER",type:"WRECK",depth:72,lat:35.10183,lon:-75.70967},
+  {name:"AR250 CONCRETE RUBBLE",type:"WRECK",depth:83,lat:34.94233,lon:-75.90867},
+  {name:"AR255 BRIDGE SPAN",type:"WRECK",depth:83,lat:34.92133,lon:-75.9595},
+  {name:"AR275 GULF COAST",type:"WRECK",depth:55,lat:34.8345,lon:-76.27283},
+  {name:"AR275 MISS CLARA",type:"WRECK",depth:55,lat:34.83483,lon:-76.27517},
+  {name:"AR285 SHIP",type:"WRECK",depth:65,lat:34.55533,lon:-76.43533},
+  {name:"AR285 CONCRETE PIPES",type:"WRECK",depth:65,lat:34.55567,lon:-76.43583},
+  {name:"AR300 OILER HARDEES REEF",type:"WRECK",depth:90,lat:34.30883,lon:-76.40383},
+  {name:"AR302 YANCY TRANSPORT",type:"WRECK",depth:160,lat:34.17033,lon:-76.23017},
+  {name:"AR305 AEOLUS",type:"WRECK",depth:104,lat:34.2735,lon:-76.63983},
+  {name:"AR315 THEODORE PARKER",type:"WRECK",depth:49,lat:34.67017,lon:-76.7405},
+  {name:"AR315 BARGE",type:"WRECK",depth:49,lat:34.67067,lon:-76.73817},
+  {name:"AR320 NOVELTY",type:"WRECK",depth:48,lat:34.65483,lon:-76.80433},
+  {name:"AR330 INDRA",type:"WRECK",depth:60,lat:34.557,lon:-76.851},
+  {name:"AR330 C-130 AIRCRAFT",type:"WRECK",depth:60,lat:34.55633,lon:-76.85367},
+  {name:"AR340 TRAIN CARS",type:"WRECK",depth:58,lat:34.56983,lon:-76.97017},
+  {name:"AR342 PIPES TRAIN CARS",type:"WRECK",depth:49,lat:34.60467,lon:-77.035},
+  {name:"AR345 TRAIN CARS",type:"WRECK",depth:60,lat:34.53567,lon:-76.97167},
+  {name:"AR355 SEA MINT",type:"WRECK",depth:60,lat:34.352,lon:-77.334},
+  {name:"AR360 CONCRETE PIPES",type:"WRECK",depth:44,lat:34.35017,lon:-77.60183},
+  {name:"AR362 CONCRETE PIPES",type:"WRECK",depth:54,lat:34.25733,lon:-77.50383},
+  {name:"AR364 BARGE",type:"WRECK",depth:44,lat:34.241,lon:-77.709},
+  {name:"AR364 TUG CAPTAIN TOM",type:"WRECK",depth:44,lat:34.24167,lon:-77.708},
+  {name:"AR364 LANDING CRAFT",type:"WRECK",depth:44,lat:34.24117,lon:-77.7085},
+  {name:"AR364 SOUTHERN CRAFT 8",type:"WRECK",depth:44,lat:34.24183,lon:-77.70833},
+  {name:"AR366 PIPES",type:"WRECK",depth:66,lat:34.20983,lon:-77.41933},
+  {name:"AR368 BARGE LC-16",type:"WRECK",depth:66,lat:34.15583,lon:-77.42583},
+  {name:"AR370 TUG SICONY 8",type:"WRECK",depth:52,lat:34.172,lon:-77.75083},
+  {name:"AR370 BARGE",type:"WRECK",depth:52,lat:34.1715,lon:-77.75783},
+  {name:"AR370 ALEXANDER RAMSEY",type:"WRECK",depth:52,lat:34.17183,lon:-77.75117},
+  {name:"AR372 BARGES",type:"WRECK",depth:50,lat:34.10233,lon:-77.74133},
+  {name:"AR376 CONCRETE PIPES",type:"WRECK",depth:60,lat:34.05333,lon:-77.657},
+  {name:"AR378 BARGES",type:"WRECK",depth:40,lat:34.03333,lon:-77.86667},
+  {name:"AR382 TUG POCOHANTAS",type:"WRECK",depth:58,lat:33.97167,lon:-77.68617},
+  {name:"AR382 TUG RR STONE",type:"WRECK",depth:58,lat:33.97167,lon:-77.68617},
+  {name:"AR386 BARGE ALTON LENNON",type:"WRECK",depth:78,lat:33.95633,lon:-77.554},
+  {name:"AR386 DREDGE HYDE",type:"WRECK",depth:78,lat:33.9545,lon:-77.55433},
+  {name:"AR420 BARGE HT-85",type:"WRECK",depth:30,lat:33.83733,lon:-78.119},
+  {name:"AR425 CONCRETE PIPES",type:"WRECK",depth:30,lat:33.88383,lon:-78.106},
+  {name:"AR440 TUGS AT PINER COOPEDGE",type:"WRECK",depth:42,lat:33.82467,lon:-78.21767},
+  {name:"AR445 SHIP JELL II",type:"WRECK",depth:53,lat:33.74167,lon:-78.234},
+  {name:"AR455 CONCRETE PIPES BOXCARS",type:"WRECK",depth:46,lat:33.78383,lon:-78.29233},
+  {name:"AR460 BARGE",type:"WRECK",depth:38,lat:33.83467,lon:-78.35933},
+  {name:"AR465 MANCE LASSITER",type:"WRECK",depth:0,lat:33.3875,lon:-78.18383},
+  {name:"AVON ROCK LEDGE",type:"LEDGE",depth:0,lat:35.33467,lon:-75.36517},
+  {name:"B-12 DROP",type:"LEDGE",depth:60,lat:34.46717,lon:-76.444},
+  {name:"BAD BOTTOMS 1",type:"ROCKS",depth:0,lat:35.13233,lon:-75.53567},
+  {name:"BAD BOTTOMS 2",type:"ROCKS",depth:0,lat:35.09867,lon:-75.585},
+  {name:"BAD BOTTOMS 3",type:"ROCKS",depth:0,lat:35.119,lon:-75.561},
+  {name:"BIG 10 FATHOM",type:"ROCKS",depth:60,lat:34.38883,lon:-76.59417},
+  {name:"BIG ROCK NE",type:"ROCKS",depth:258,lat:34.177,lon:-76.15833},
+  {name:"BIG ROCK SE",type:"ROCKS",depth:517,lat:34.07167,lon:-76.20833},
+  {name:"CABBAGE PATCH",type:"ROCKS",depth:45,lat:34.3745,lon:-77.525},
+  {name:"CAROLINA BEACH LEDGE",type:"LEDGE",depth:55,lat:34.01,lon:-77.76767},
+  {name:"CHICKEN ROCK",type:"ROCKS",depth:0,lat:34.62,lon:-76.16683},
+  {name:"CHRISTMAS ROCK",type:"ROCKS",depth:65,lat:34.4,lon:-77.16267},
+  {name:"CORAL BOTTOM",type:"CORAL",depth:0,lat:34.339,lon:-77.1445},
+  {name:"D WRECK",type:"WRECK",depth:78,lat:34.60617,lon:-76.31467},
+  {name:"DALLAS ROCK",type:"ROCKS",depth:65,lat:34.23667,lon:-77.50667},
+  {name:"DEEP HOLE",type:"HOLE",depth:250,lat:33.983,lon:-76.35083},
+  {name:"DEEP HOLE S",type:"HOLE",depth:440,lat:33.96667,lon:-76.33333},
+  {name:"DIVERS ROCK",type:"ROCKS",depth:42,lat:34.49033,lon:-77.27283},
+  {name:"DOORSTOP LEDGE HIGH STEP",type:"LEDGE",depth:95,lat:34.19833,lon:-76.95833},
+  {name:"DOORSTOP LEDGE LO STEP",type:"LEDGE",depth:102,lat:34.187,lon:-76.95},
+  {name:"EAST CHRISTMAS ROCK",type:"ROCKS",depth:0,lat:34.378,lon:-77.2095},
+  {name:"EAST ROCK",type:"ROCKS",depth:0,lat:34.29733,lon:-76.58633},
+  {name:"EAST ROCK NORTH",type:"ROCKS",depth:72,lat:34.29767,lon:-76.58433},
+  {name:"EAST ROCK SOUTH",type:"ROCKS",depth:72,lat:34.32317,lon:-76.6045},
+  {name:"ED WRECK",type:"WRECK",depth:120,lat:33.88583,lon:-77.225},
+  {name:"EIGHTEEN MILE ROCK",type:"ROCKS",depth:75,lat:34.05433,lon:-77.459},
+  {name:"ESSO ROCK",type:"ROCKS",depth:115,lat:33.86333,lon:-77.2},
+  {name:"FAR EAST TANKER TAMAUIPAS",type:"WRECK",depth:137,lat:34.53717,lon:-76.01483},
+  {name:"FENWICK ISLE WRECK",type:"WRECK",depth:35,lat:34.43683,lon:-76.49117},
+  {name:"FIVE MILE ROCK",type:"ROCKS",depth:57,lat:34.065,lon:-77.68667},
+  {name:"FORT FISHER LEDGES",type:"LEDGE",depth:35,lat:33.96,lon:-77.87083},
+  {name:"FORTY MILE ROCK",type:"ROCKS",depth:118,lat:33.845,lon:-77.10833},
+  {name:"FOURTEEN MILE ROCK",type:"ROCKS",depth:78,lat:34.17367,lon:-77.52067},
+  {name:"FRYING PAN LEDGES EAST",type:"LEDGE",depth:49,lat:33.86667,lon:-77.82167},
+  {name:"FUN ROCK",type:"ROCKS",depth:0,lat:34.35817,lon:-76.68317},
+  {name:"GARY BALLARDS PLACE",type:"ROCKS",depth:105,lat:34.00917,lon:-77.1},
+  {name:"GRAINGER ROCK",type:"ROCKS",depth:113,lat:33.91667,lon:-77.175},
+  {name:"GROUPER HOLE",type:"HOLE",depth:355,lat:33.90833,lon:-76.42083},
+  {name:"HONEYMOON ROCK",type:"ROCKS",depth:55,lat:34.458,lon:-77.14867},
+  {name:"HUNTERS HOLE",type:"HOLE",depth:90,lat:33.79583,lon:-77.425},
+  {name:"I WRECK",type:"WRECK",depth:109,lat:34.186,lon:-76.6015},
+  {name:"JERRYS REEF",type:"ROCKS",depth:42,lat:34.48283,lon:-76.8865},
+  {name:"KNUCKLE BUOY",type:"BUOY",depth:36,lat:34.447,lon:-76.47},
+  {name:"KURE BEACH ROCK",type:"ROCKS",depth:48,lat:33.9925,lon:-77.74167},
+  {name:"LEDGE 33.4",type:"LEDGE",depth:0,lat:34.42533,lon:-77.30117},
+  {name:"LITTLE 10",type:"LEDGE",depth:60,lat:34.40017,lon:-76.5955},
+  {name:"LOST ROCK",type:"ROCKS",depth:0,lat:34.53333,lon:-77.101},
+  {name:"MASONBORO WRECK",type:"WRECK",depth:68,lat:34.13667,lon:-77.72917},
+  {name:"MASONBORO ROCK",type:"ROCKS",depth:90,lat:34.04133,lon:-77.36333},
+  {name:"NE RIVER WRECK",type:"WRECK",depth:72,lat:34.32917,lon:-77.13417},
+  {name:"NE RIVER REEF",type:"ROCKS",depth:95,lat:34.25833,lon:-76.91367},
+  {name:"NINE MILE ROCK",type:"ROCKS",depth:73,lat:34.2375,lon:-77.50333},
+  {name:"NW PLACE 1",type:"ROCKS",depth:60,lat:34.45433,lon:-76.627},
+  {name:"NW PLACE 2",type:"ROCKS",depth:60,lat:34.44633,lon:-76.623},
+  {name:"NW PLACE 3",type:"ROCKS",depth:60,lat:34.42767,lon:-76.60833},
+  {name:"PETE BROWN KING ROCK",type:"ROCKS",depth:65,lat:34.365,lon:-77.41267},
+  {name:"PUPS ROCK",type:"ROCKS",depth:0,lat:34.3815,lon:-76.84433},
+  {name:"R13 SULOIDE WRECK",type:"WRECK",depth:60,lat:34.54417,lon:-76.894},
+  {name:"RICH WRECK",type:"WRECK",depth:110,lat:33.9255,lon:-77.1},
+  {name:"ROCK NORTH OF R-4",type:"ROCKS",depth:90,lat:33.92917,lon:-77.45833},
+  {name:"ROCK PILE",type:"ROCKS",depth:180,lat:34.85417,lon:-75.525},
+  {name:"ROCK SE 23 MILE ROCK",type:"ROCKS",depth:110,lat:33.96667,lon:-77.308},
+  {name:"ROCK SOUTH OF 13",type:"ROCKS",depth:78,lat:34.47517,lon:-76.90433},
+  {name:"RUSSIAN FREIGHTER",type:"WRECK",depth:55,lat:34.38133,lon:-76.36633},
+  {name:"SEVEN MILE ROCK",type:"ROCKS",depth:76,lat:34.14167,lon:-77.65333},
+  {name:"SHAD BOAT AMAGANSANT",type:"WRECK",depth:102,lat:34.53717,lon:-76.2475},
+  {name:"SIXTEEN FATHOM ROCK",type:"ROCKS",depth:113,lat:33.9,lon:-77.09167},
+  {name:"SNEADS FERRY BIG ROCK",type:"ROCKS",depth:95,lat:34.13667,lon:-77.19167},
+  {name:"SOUTH EAST LEDGE 1",type:"LEDGE",depth:72,lat:34.43167,lon:-76.90667},
+  {name:"SOUTH EAST LEDGE 2",type:"LEDGE",depth:72,lat:34.42883,lon:-76.91},
+  {name:"SOUTH EAST LEDGE 3",type:"LEDGE",depth:72,lat:34.42933,lon:-76.88333},
+  {name:"SOUTH LEDGES",type:"LEDGE",depth:37,lat:34.45867,lon:-77.425},
+  {name:"STATION ROCK",type:"ROCKS",depth:0,lat:34.58783,lon:-77.0685},
+  {name:"STEAMSHIP WRECK",type:"WRECK",depth:115,lat:33.8625,lon:-77.15},
+  {name:"STEVES ROCK",type:"ROCKS",depth:0,lat:34.40917,lon:-76.98233},
+  {name:"SURF CITY LEDGE",type:"LEDGE",depth:50,lat:34.45,lon:-77.52017},
+  {name:"TEN FOOT LEDGE",type:"LEDGE",depth:100,lat:34.06533,lon:-77.00833},
+  {name:"TEN MILE ROCK",type:"ROCKS",depth:62,lat:34.109,lon:-77.63033},
+  {name:"THE RISE",type:"HUMP",depth:168,lat:34.01333,lon:-76.37867},
+  {name:"THIRTEEN FATHOM",type:"LEDGE",depth:80,lat:33.76667,lon:-77.6},
+  {name:"THREE FOOT LEDGE",type:"LEDGE",depth:102,lat:34.025,lon:-76.875},
+  {name:"TOPSAIL LEDGE INSHORE",type:"LEDGE",depth:46,lat:34.35,lon:-77.62567},
+  {name:"TOPSAIL LEDGE OFFSHORE",type:"LEDGE",depth:75,lat:34.2435,lon:-77.30933},
+  {name:"TRAWLER R-8",type:"WRECK",depth:54,lat:34.55417,lon:-76.60417},
+  {name:"TWELVE FATHOM ROCK",type:"ROCKS",depth:72,lat:33.91667,lon:-77.55},
+  {name:"TWELVE FOOT LEDGE",type:"LEDGE",depth:100,lat:34.04133,lon:-76.99167},
+  {name:"TWELVE MILE ROCK",type:"ROCKS",depth:59,lat:34.03533,lon:-77.631},
+  {name:"TWENTY-THREE MILE ROCK",type:"ROCKS",depth:90,lat:34.005,lon:-77.372},
+  {name:"TWENTY-TWO MILE ROCK",type:"ROCKS",depth:84,lat:34.16833,lon:-77.359},
+  {name:"TWO MILE ROCK",type:"ROCKS",depth:52,lat:34.15417,lon:-77.77333},
+  {name:"U352 SUB",type:"WRECK",depth:115,lat:34.227,lon:-76.56483},
+  {name:"WRECK AND CORAL BOTTOM",type:"WRECK",depth:125,lat:33.95,lon:-77.59167},
+  {name:"YELLOWFIN HOLE",type:"HOLE",depth:0,lat:33.88167,lon:-76.446},
+];
+
+// Combined
+var FISHING_AREAS = CANYON_SPOTS.concat(NC_FISHING_SPOTS);
 
 function toggleFishing() {
   fishingEnabled = !fishingEnabled;
@@ -1034,61 +1207,60 @@ function toggleFishing() {
   }
 }
 
+function fishIcon(type) {
+  var icons = {
+    'WRECK':'⚓', 'ROCKS':'🪨', 'LEDGE':'📊', 'HOLE':'🕳️',
+    'CANYON':'🏔️', 'BUOY':'🔴', 'CORAL':'🪸', 'HUMP':'⛰️'
+  };
+  return icons[type] || '🎣';
+}
+
 function loadFishingAreas() {
   fishingMarkers.forEach(function(m){ mapInst.removeLayer(m); });
   fishingMarkers = [];
 
   FISHING_AREAS.forEach(function(area) {
-    var icon = L.divIcon({
-      className: '',
-      html: '<div style="'
-        + 'display:flex;flex-direction:column;align-items:center;'
-        + 'cursor:pointer;'
-        + '">'
-        + '<div style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7))">🐟</div>'
-        + '<div style="'
-        + 'background:rgba(0,0,0,0.72);'
-        + 'color:#fff;'
-        + 'font-size:10px;'
-        + 'font-weight:600;'
-        + 'padding:2px 6px;'
-        + 'border-radius:3px;'
-        + 'border:1px solid rgba(255,255,255,0.3);'
-        + 'white-space:nowrap;'
-        + 'margin-top:2px;'
-        + 'max-width:140px;'
-        + 'text-align:center;'
-        + 'line-height:1.3;'
-        + '">'+area.name+'</div>'
-        + '</div>',
-      iconSize:   [140, 50],
-      iconAnchor: [70, 25]
-    });
+    var ico = fishIcon(area.type);
+    var depthStr = area.depth ? area.depth+"'" : '';
+    var html = '<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer">'
+      + '<div style="font-size:16px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.8))">'+ico+'</div>'
+      + '<div style="background:rgba(0,0,0,0.75);color:#fff;font-size:9px;font-weight:600;'
+      + 'padding:1px 4px;border-radius:2px;white-space:nowrap;margin-top:1px;max-width:120px;'
+      + 'text-align:center;line-height:1.3;border:1px solid rgba(255,255,255,0.25)">'
+      + area.name + (depthStr ? '<br><span style="color:#aef">'+depthStr+'</span>' : '')
+      + '</div></div>';
 
-    var lat = area.lat, lon = area.lon;
-    var latDeg  = Math.floor(Math.abs(lat));
-    var latMin  = ((Math.abs(lat) - latDeg) * 60).toFixed(3);
-    var lonDeg  = Math.floor(Math.abs(lon));
-    var lonMin  = ((Math.abs(lon) - lonDeg) * 60).toFixed(3);
-    var coords  = latDeg+"° "+latMin+"' N / "+lonDeg+"° "+lonMin+"' W";
+    var icon = L.divIcon({ className:'', html:html, iconSize:[120,44], iconAnchor:[60,22] });
 
-    var m = L.marker([lat, lon], { icon: icon, zIndexOffset: 500 })
-      .addTo(mapInst)
-      .bindPopup(
-        '<div style="font-weight:700;font-size:13px;color:#1D9E75;margin-bottom:4px">🐟 '+area.name+'</div>'
-        + '<div style="font-size:11px;font-family:monospace;color:#aaa">'+coords+'</div>'
-      );
+    var lat=area.lat, lon=area.lon;
+    var latDeg=Math.floor(Math.abs(lat));
+    var latMin=((Math.abs(lat)-latDeg)*60).toFixed(3);
+    var lonDeg=Math.floor(Math.abs(lon));
+    var lonMin=((Math.abs(lon)-lonDeg)*60).toFixed(3);
+    var coords=latDeg+"° "+latMin+"' N / "+lonDeg+"° "+lonMin+"' W";
+
+    var popup='<div style="font-weight:700;font-size:13px;color:#1D9E75;margin-bottom:4px">'
+      +ico+' '+area.name+'</div>'
+      +'<div style="font-size:11px;color:#aaa">Type: '+area.type+'</div>'
+      +(area.depth?'<div style="font-size:12px;color:#00ccff;font-weight:600">Depth: '+area.depth+" ft</div>":'')
+      +'<div style="font-size:10px;font-family:monospace;color:#888;margin-top:4px">'+coords+'</div>';
+
+    var m = L.marker([lat,lon],{icon:icon,zIndexOffset:500})
+      .addTo(mapInst).bindPopup(popup);
     fishingMarkers.push(m);
   });
 
-  // Pan map to show all fishing areas
-  var group = L.featureGroup(fishingMarkers);
-  mapInst.fitBounds(group.getBounds().pad(0.3), { maxZoom: 10 });
+  if(fishingMarkers.length>0){
+    var group=L.featureGroup(fishingMarkers);
+    mapInst.fitBounds(group.getBounds().pad(0.2),{maxZoom:10});
+  }
 }
 
 // ── Ocean Floor Bathymetry ────────────────────────────────────────────────────
 var bathyEnabled = false;
 var bathyLayer   = null;
+
+var depthMarkers = [];
 
 function toggleBathy() {
   bathyEnabled = !bathyEnabled;
@@ -1097,31 +1269,62 @@ function toggleBathy() {
     btn.style.borderColor = '#00aaff';
     btn.style.color = '#00aaff';
     loadBathyLayer();
+    loadDepthLabels();
   } else {
     btn.style.borderColor = '';
     btn.style.color = '';
     if(bathyLayer){ mapInst.removeLayer(bathyLayer); bathyLayer=null; }
+    depthMarkers.forEach(function(m){ mapInst.removeLayer(m); });
+    depthMarkers = [];
   }
 }
 
 function loadBathyLayer() {
   if(bathyLayer) return;
-
-  // NOAA NCEI GMRT (Global Multi-Resolution Topography) WMS
-  // Shows ocean floor depth as a color gradient — deep=dark blue, shallow=light
   bathyLayer = L.tileLayer.wms('https://www.gmrt.org/services/mapserver/wms_merc?', {
-    layers:      'GMRT',
-    format:      'image/png',
-    transparent: true,
-    opacity:     0.55,
-    version:     '1.1.1',
-    attribution: 'NOAA GMRT Bathymetry'
+    layers:'GMRT', format:'image/png', transparent:true,
+    opacity:0.55, version:'1.1.1', attribution:'NOAA GMRT Bathymetry'
   });
-
   bathyLayer.addTo(mapInst);
-
-  // Move bathy below vessels but above base map
   bathyLayer.setZIndex(200);
+}
+
+function depthColor(ft) {
+  if(ft < 100)   return '#00eeff';  // very shallow - cyan
+  if(ft < 300)   return '#00aaff';  // shallow - blue
+  if(ft < 600)   return '#0055ff';  // mid shelf
+  if(ft < 1200)  return '#0000cc';  // shelf break
+  if(ft < 3000)  return '#000088';  // slope
+  return '#000044';                  // deep
+}
+
+function loadDepthLabels() {
+  depthMarkers.forEach(function(m){ mapInst.removeLayer(m); });
+  depthMarkers = [];
+
+  fetch('/depth-grid')
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if(!bathyEnabled) return;
+      var pts = data.points || [];
+      console.log('[depth] got '+pts.length+' depth points');
+      pts.forEach(function(pt) {
+        var color = depthColor(pt.depthFt);
+        var html = '<div style="color:'+color+';font-size:10px;font-weight:700;'
+          +'font-family:monospace;background:rgba(0,0,0,0.6);padding:1px 4px;'
+          +'border-radius:3px;border:1px solid '+color+';white-space:nowrap">'
+          +pt.depthFt.toLocaleString()+" ft</div>";
+        var icon = L.divIcon({className:'',html:html,iconSize:[70,16],iconAnchor:[35,8]});
+        var m = L.marker([pt.lat,pt.lon],{icon:icon,zIndexOffset:-200})
+          .addTo(mapInst)
+          .bindPopup('<b>Ocean Depth</b><br>'
+            +'<span style="color:'+color+';font-size:14px;font-weight:700">'
+            +pt.depthFt.toLocaleString()+' ft</span><br>'
+            +'<span style="color:#888">'+(pt.depthFt/3.28084).toFixed(0)+' m</span>');
+        depthMarkers.push(m);
+      });
+    })
+    .catch(function(e){ console.error('[depth] failed:', e); });
 }
 
 </script>
