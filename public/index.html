@@ -125,6 +125,7 @@ tr.selected td{background:rgba(29,158,117,.12)}
     <div class="stat-pill"><div class="pulse" id="pulse-dot" style="display:none"></div><span class="val" id="st-vessels">0</span><span class="lbl">vessels</span></div>
     <div class="stat-pill"><span class="val" id="st-msgs">0</span><span class="lbl">msgs</span></div>
     <div class="stat-pill"><div class="status-dot" id="status-dot"></div><span id="st-status">—</span></div>
+    <button class="disc-btn" id="fish-btn" onclick="toggleFishing()" title="Toggle fishing areas">🎣 Fishing</button>
     <button class="disc-btn" id="temp-btn" onclick="toggleTemp()" title="Toggle water temperature overlay">🌡️ Temp</button>
     <button class="disc-btn" id="vessels-btn" onclick="toggleVessels()" title="Hide/show vessels">🚢 Vessels</button>
     <button class="disc-btn" onclick="doDisconnect()">Disconnect</button>
@@ -958,6 +959,86 @@ function loadBuoyTemps() {
         }
       }).catch(function(){});
   });
+}
+
+// ── Fishing Areas ─────────────────────────────────────────────────────────────
+var fishingEnabled  = false;
+var fishingMarkers  = [];
+
+var FISHING_AREAS = [
+  { name: 'Hudson Canyon (Mouth)',     lat: 39 + 41.049/60, lon: -(72 + 29.015/60) },
+  { name: 'Hudson Canyon (Tip/Upper)', lat: 39 + 40.956/60, lon: -(72 + 28.865/60) },
+  { name: 'West Atlantis Canyon',      lat: 40 + 4.500/60,  lon: -(70 + 27.000/60) },
+  { name: 'Atlantis Canyon',           lat: 40 + 4.40/60,   lon: -(70 + 11.64/60)  },
+  { name: 'East Atlantis Canyon',      lat: 39 + 57.500/60, lon: -(69 + 55.000/60) },
+  { name: 'Veatch Canyon',             lat: 40 + 0.000/60,  lon: -(69 + 37.000/60) },
+];
+
+function toggleFishing() {
+  fishingEnabled = !fishingEnabled;
+  var btn = document.getElementById('fish-btn');
+  if(fishingEnabled) {
+    btn.style.borderColor = '#1D9E75';
+    btn.style.color = '#1D9E75';
+    loadFishingAreas();
+  } else {
+    btn.style.borderColor = '';
+    btn.style.color = '';
+    fishingMarkers.forEach(function(m){ mapInst.removeLayer(m); });
+    fishingMarkers = [];
+  }
+}
+
+function loadFishingAreas() {
+  fishingMarkers.forEach(function(m){ mapInst.removeLayer(m); });
+  fishingMarkers = [];
+
+  FISHING_AREAS.forEach(function(area) {
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="'
+        + 'display:flex;flex-direction:column;align-items:center;'
+        + 'cursor:pointer;'
+        + '">'
+        + '<div style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7))">🐟</div>'
+        + '<div style="'
+        + 'background:rgba(0,0,0,0.72);'
+        + 'color:#fff;'
+        + 'font-size:10px;'
+        + 'font-weight:600;'
+        + 'padding:2px 6px;'
+        + 'border-radius:3px;'
+        + 'border:1px solid rgba(255,255,255,0.3);'
+        + 'white-space:nowrap;'
+        + 'margin-top:2px;'
+        + 'max-width:140px;'
+        + 'text-align:center;'
+        + 'line-height:1.3;'
+        + '">'+area.name+'</div>'
+        + '</div>',
+      iconSize:   [140, 50],
+      iconAnchor: [70, 25]
+    });
+
+    var lat = area.lat, lon = area.lon;
+    var latDeg  = Math.floor(Math.abs(lat));
+    var latMin  = ((Math.abs(lat) - latDeg) * 60).toFixed(3);
+    var lonDeg  = Math.floor(Math.abs(lon));
+    var lonMin  = ((Math.abs(lon) - lonDeg) * 60).toFixed(3);
+    var coords  = latDeg+"° "+latMin+"' N / "+lonDeg+"° "+lonMin+"' W";
+
+    var m = L.marker([lat, lon], { icon: icon, zIndexOffset: 500 })
+      .addTo(mapInst)
+      .bindPopup(
+        '<div style="font-weight:700;font-size:13px;color:#1D9E75;margin-bottom:4px">🐟 '+area.name+'</div>'
+        + '<div style="font-size:11px;font-family:monospace;color:#aaa">'+coords+'</div>'
+      );
+    fishingMarkers.push(m);
+  });
+
+  // Pan map to show all fishing areas
+  var group = L.featureGroup(fishingMarkers);
+  mapInst.fitBounds(group.getBounds().pad(0.3), { maxZoom: 10 });
 }
 
 </script>
