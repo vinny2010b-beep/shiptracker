@@ -91,26 +91,32 @@ app.get('/sst', (req, res) => {
   }).on('error', (e) => res.json({ table: { rows: [] } }));
 });
 
-// ── ERDDAP SST batch — fetch all points in ONE ERDDAP request ────────────────
-// Uses ERDDAP's CSV endpoint to get a bounding box of points at once
-app.get('/sst-grid', (req, res) => {
+// ── ERDDAP SST batch — cached for 6 hours ───────────────────────────────────
+let sstCache = null;
+let sstCacheTime = 0;
+const SST_CACHE_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+function fetchSSTGrid(callback) {
+  const now = Date.now();
+  if (sstCache && (now - sstCacheTime) < SST_CACHE_MS) {
+    console.log('[sst-grid] serving from cache, age:', Math.round((now-sstCacheTime)/60000)+'min');
+    return callback(null, sstCache);
+  }
+
   const d = new Date(); d.setDate(d.getDate() - 1);
   const date = d.toISOString().substring(0, 10) + 'T00:00:00Z';
-
-  // Fetch a 0.5-degree resolution grid covering the whole East Coast
-  // ERDDAP griddap: lat 24 to 47, lon -82 to -60, stride 1 (0.01 deg native, use stride ~50 for ~0.5deg)
   const url = `https://coastwatch.pfeg.noaa.gov/erddap/griddap/jplMURSST41.csv?analysed_sst%5B(${date})%5D%5B(47):50:(24)%5D%5B(-60):50:(-82)%5D`;
 
-  console.log('[sst-grid] fetching:', url);
-  https.get(url, (r) => {
+  console.log('[sst-grid] fetching from ERDDAP...');
+  const req = https.get(url, (r) => {
     let data = '';
+    r.setTimeout(20000);
     r.on('data', d => data += d);
     r.on('end', () => {
       try {
-        // Parse CSV: time,lat,lon,analysed_sst
         const lines  = data.trim().split('\n');
         const points = [];
-        for (let i = 2; i < lines.length; i++) { // skip 2 header rows
+        for (let i = 2; i < lines.length; i++) {
           const cols = lines[i].split(',');
           if (cols.length < 4) continue;
           const lat   = parseFloat(cols[1]);
@@ -121,19 +127,37 @@ app.get('/sst-grid', (req, res) => {
           const tempF = parseFloat((tempC * 9/5 + 32).toFixed(1));
           points.push({ lat, lon, tempC: parseFloat(tempC.toFixed(1)), tempF });
         }
-        console.log('[sst-grid] parsed', points.length, 'points');
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.json({ points, date: date.substring(0, 10) });
+        if (points.length > 0) {
+          sstCache = { points, date: date.substring(0, 10) };
+          sstCacheTime = now;
+          console.log('[sst-grid] cached', points.length, 'points');
+        }
+        callback(null, { points, date: date.substring(0, 10) });
       } catch(e) {
+        // If ERDDAP fails, return stale cache if available
         console.error('[sst-grid] parse error:', e.message);
-        res.json({ error: e.message, points: [] });
+        callback(null, sstCache || { points: [], error: e.message });
       }
     });
-  }).on('error', (e) => {
-    console.error('[sst-grid] fetch error:', e.message);
-    res.json({ error: e.message, points: [] });
   });
+  req.setTimeout(25000, () => {
+    req.destroy();
+    console.error('[sst-grid] timeout — using stale cache');
+    callback(null, sstCache || { points: [], error: 'timeout' });
+  });
+  req.on('error', (e) => {
+    console.error('[sst-grid] error:', e.message);
+    callback(null, sstCache || { points: [], error: e.message });
+  });
+}
+
+app.get('/sst-grid', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  fetchSSTGrid((err, data) => res.json(data));
 });
+
+// Pre-warm cache on startup
+setTimeout(() => fetchSSTGrid(() => console.log('[sst-grid] pre-warmed')), 5000);
 
 // ── NDBC buoy proxy (avoids CORS) ────────────────────────────────────────────
 app.get('/ndbc', (req, res) => {
