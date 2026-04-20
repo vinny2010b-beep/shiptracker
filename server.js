@@ -9,7 +9,7 @@ const API_KEY       = process.env.AISSTREAM_API_KEY || '88725b94e9703f7de49e8f99
 const PORT          = process.env.PORT || 3000;
 const DB_API_URL    = process.env.DB_API_URL || 'https://rachelssolutions.com/ais/vessels_api.php';
 const DB_SECRET     = process.env.DB_SECRET  || 'ais_secret_key_change_me';
-const SAVE_INTERVAL = 30000; // save to DB every 30 seconds
+const SAVE_INTERVAL = 60000; // save to DB every 60 seconds
 
 // East Coast US + 140 miles offshore bounding box
 // Extends from Florida to Maine, and ~140 miles out to sea (~2 degrees of longitude)
@@ -19,7 +19,7 @@ const DEFAULT_SUB = JSON.stringify({
   APIKey:             API_KEY,
   Apikey:             API_KEY,
   BoundingBoxes:      [EAST_COAST_BBOX],
-  FilterMessageTypes: ['PositionReport', 'StandardClassBPositionReport', 'ExtendedClassBPositionReport', 'ShipStaticData']
+  FilterMessageTypes: ['PositionReport', 'StandardClassBPositionReport', 'ShipStaticData']
 });
 
 const app    = express();
@@ -30,7 +30,20 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ── DB save helper ────────────────────────────────────────────────────────────
 function saveToDb(vessels) {
-  const list = Object.values(vessels).filter(v => v.lat != null && v.lon != null);
+  // Vessel types to exclude: Cargo(70-79), Tanker(80-89), Dredging(33),
+  // HSC(40-49), WIG(20-29), Diving(34), Anti-pollution(54), Towing(31,32)
+  const excludedTypes = new Set([33, 34, 31, 32, 54]);
+  const list = Object.values(vessels).filter(v => {
+    if (!v.lat || !v.lon) return false;
+    if (!v.type) return true; // unknown type — include
+    const t = v.type;
+    if (excludedTypes.has(t)) return false;
+    if (t >= 20 && t <= 29) return false; // WIG
+    if (t >= 40 && t <= 49) return false; // HSC
+    if (t >= 70 && t <= 79) return false; // Cargo
+    if (t >= 80 && t <= 89) return false; // Tanker
+    return true;
+  });
   if (!list.length) return;
 
   const body = JSON.stringify({ vessels: list });
@@ -198,6 +211,7 @@ wss.on('connection', (browser) => {
 
     upstream.on('message', (data) => {
       const str = data.toString();
+      // Always relay to browser for live map updates
       browser.send(str);
 
       // Parse and accumulate vessel state for DB
