@@ -250,15 +250,32 @@ function doConnect(){
     mapInst=L.map('map').setView(selCenter,selZoom);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© <a href="https://openstreetmap.org">OpenStreetMap</a>',maxZoom:18}).addTo(mapInst);
 
-    // Reload temp grid whenever map moves with temp on
+    // Reload temp or depth grid whenever map moves
     mapInst.on('moveend zoomend', function() {
-      if(!tempEnabled) return;
-      clearTimeout(zoomTempTimer);
-      zoomTempTimer = setTimeout(loadVisibleAreaGrid, 600);
+      if(tempEnabled) {
+        clearTimeout(zoomTempTimer);
+        zoomTempTimer = setTimeout(loadVisibleAreaGrid, 600);
+      }
     });
 
-    // Click on water to get temp at that spot
+    // Click on water to get temp or depth at that spot
     mapInst.on('click', function(e) {
+      if(bathyEnabled) {
+        var lat=parseFloat(e.latlng.lat.toFixed(4));
+        var lon=parseFloat(e.latlng.lng.toFixed(4));
+        var popup=L.popup().setLatLng(e.latlng).setContent('<i>Fetching depth...</i>').openOn(mapInst);
+        fetch('/depth?lat='+lat+'&lon='+lon)
+          .then(function(r){return r.json();})
+          .then(function(d){
+            if(!d.depthFt){popup.setContent('No depth data here (may be on land).');return;}
+            popup.setContent(
+              '<b style="font-size:15px;color:#00aaff">🌊 '+d.depthFt.toLocaleString()+' ft</b><br>'
+              +'<span style="color:#888">'+d.depthM.toLocaleString()+' meters</span><br>'
+              +'<small style="color:#666">'+lat+', '+lon+'</small>'
+            );
+          }).catch(function(){popup.setContent('Could not fetch depth.');});
+        return;
+      }
       if(!tempEnabled) return;
       var lat = parseFloat(e.latlng.lat.toFixed(4));
       var lon = parseFloat(e.latlng.lng.toFixed(4));
