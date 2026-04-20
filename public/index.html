@@ -1,1 +1,1056 @@
+<!DOCTYPE html><!-- v2.1 -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AISStream Live Ship Tracker</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0d1117;--surface:#161b22;--surface2:#1c2128;--border:rgba(255,255,255,0.1);--text:#e6edf3;--muted:#8b949e;--green:#1D9E75;--green-dark:#0F6E56;--amber:#d29922;--red:#f85149;--mono:'Courier New',monospace}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;min-height:100vh}
+#setup{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:2rem}
+.setup-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2.5rem;max-width:500px;width:100%}
+.logo{display:flex;align-items:center;gap:10px;margin-bottom:1.5rem}
+.logo-icon{width:36px;height:36px;background:var(--green);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px}
+.logo h1{font-size:20px;font-weight:600}
+.logo p{font-size:12px;color:var(--muted)}
+.setup-desc{color:var(--muted);font-size:13px;line-height:1.6;margin-bottom:1.5rem}
+.setup-desc a{color:var(--green);text-decoration:none}
+label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+input[type=text]{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;color:var(--text);font-family:var(--mono);font-size:13px;outline:none;transition:border-color .15s;margin-bottom:1rem}
+input:focus{border-color:var(--green)}
+.region-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:1.25rem}
+.region-btn{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--muted);font-size:12px;cursor:pointer;text-align:left;transition:all .15s}
+.region-btn:hover{border-color:var(--green);color:var(--text)}
+.region-btn.active{border-color:var(--green);color:var(--green);background:rgba(29,158,117,.1)}
+.connect-btn{width:100%;padding:12px;background:var(--green);color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;margin-top:.5rem}
+.connect-btn:hover{background:var(--green-dark)}
+.err{background:rgba(248,81,73,.15);color:#f85149;border:1px solid rgba(248,81,73,.3);border-radius:6px;padding:8px 12px;font-size:12px;margin-bottom:12px;display:none}
+#dashboard{display:none;flex-direction:column;height:100vh;overflow:hidden}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 1.25rem;height:52px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.topbar-logo{font-weight:700;font-size:15px;color:var(--green)}
+.topbar-region{font-size:12px;color:var(--muted)}
+.topbar-spacer{flex:1}
+.stat-pill{display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:12px}
+.stat-pill .val{font-family:var(--mono);font-weight:700;color:var(--text)}
+.stat-pill .lbl{color:var(--muted)}
+.pulse{width:7px;height:7px;background:var(--green);border-radius:50%;animation:pulse 1.4s infinite;flex-shrink:0}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.status-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0}
+.status-dot.live{background:var(--green)}
+.status-dot.error{background:var(--red)}
+.disc-btn{background:none;border:1px solid var(--border);border-radius:6px;padding:4px 12px;color:var(--muted);font-size:12px;cursor:pointer}
+.disc-btn:hover{border-color:var(--red);color:var(--red)}
+.api-err{background:rgba(248,81,73,.15);color:#f85149;border-bottom:1px solid rgba(248,81,73,.3);padding:6px 1.25rem;font-size:12px;font-family:var(--mono);display:none}
+.main-body{display:flex;flex:1;overflow:hidden}
+#map{flex:1}
+.sidebar{width:340px;flex-shrink:0;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.sidebar-header{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.sidebar-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+#tbl-count{font-size:11px;color:var(--green);font-family:var(--mono)}
+.tbl-scroll{flex:1;overflow-y:auto}
+.tbl-scroll::-webkit-scrollbar{width:4px}
+.tbl-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{padding:6px 10px;text-align:left;font-weight:600;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em;background:var(--surface2);position:sticky;top:0;z-index:1;border-bottom:1px solid var(--border)}
+td{padding:5px 10px;border-bottom:1px solid rgba(255,255,255,.04);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0}
+tr:hover td{background:var(--surface2);cursor:pointer}
+tr.selected td{background:rgba(29,158,117,.12)}
+.mono{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.name-cell{color:var(--text);font-weight:500}
+.spd-move{color:var(--green);font-family:var(--mono);font-size:10px}
+.spd-slow{color:var(--amber);font-family:var(--mono);font-size:10px}
+.spd-stop{color:var(--muted);font-family:var(--mono);font-size:10px}
+.type-badge{font-size:9px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 4px;color:var(--muted)}
+.detail-panel{border-top:1px solid var(--border);padding:12px 14px;flex-shrink:0;min-height:120px}
+.detail-panel.empty{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px}
+.detail-name{font-size:14px;font-weight:700;color:var(--green);margin-bottom:8px}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}
+.detail-row{display:flex;flex-direction:column}
+.detail-label{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:1px}
+.detail-val{font-family:var(--mono);font-size:12px;color:var(--text)}
 
+.trail-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.trail-name{font-size:13px;font-weight:500;color:var(--green)}
+.trail-close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;line-height:1}
+.trail-info{font-size:11px;color:var(--muted);margin-bottom:8px}
+.trail-slider{width:100%;cursor:pointer}
+.trail-point-info{font-size:11px;font-family:var(--mono);color:var(--text);margin-top:6px}
+.leaflet-popup-content-wrapper{background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.5);color:var(--text)}
+.leaflet-popup-tip{background:var(--surface)}
+.leaflet-popup-content{font-size:12px;line-height:1.6;margin:10px 14px}
+.popup-name{font-weight:700;color:var(--green);font-size:13px;margin-bottom:4px}
+.popup-row{display:flex;justify-content:space-between;gap:16px;border-top:1px solid var(--border);padding-top:3px;margin-top:3px}
+.popup-row span:first-child{color:var(--muted)}
+.temp-active{background:rgba(29,158,117,.2)!important;border-color:var(--green)!important;color:var(--green)!important}
+
+.legend{background:rgba(22,27,34,.9)!important;border:1px solid var(--border)!important;border-radius:6px;padding:8px 12px;font-size:11px}
+.legend-row{display:flex;align-items:center;gap:6px;margin-bottom:3px;color:var(--muted)}
+.legend-row:last-child{margin-bottom:0}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+
+
+
+
+</style>
+</head>
+<body>
+<div id="setup">
+  <div class="setup-card">
+    <div class="logo">
+      <div class="logo-icon">⚓</div>
+      <div><h1>Live Ship Tracker</h1><p>Live AIS vessel tracking</p></div>
+    </div>
+    <p class="setup-desc">Real-time global vessel tracking via AIS. Select a region and connect.</p>
+    <div id="err" class="err"></div>
+    <label>Region</label>
+    <div class="region-grid">
+      <button class="region-btn" data-bbox="[[-90,-180],[90,180]]" data-center="[20,0]" data-zoom="2">🌍 Whole world</button>
+      <button class="region-btn active" data-bbox="[[24,-82],[47,-60]]" data-center="[38,-74]" data-zoom="6">🇺🇸 US East Coast</button>
+      <button class="region-btn" data-bbox="[[20,-130],[50,-110]]" data-center="[37,-122]" data-zoom="5">🌊 US West Coast</button>
+      <button class="region-btn" data-bbox="[[35,-10],[60,30]]" data-center="[50,10]" data-zoom="4">🇪🇺 Europe</button>
+      <button class="region-btn" data-bbox="[[-10,95],[35,145]]" data-center="[12,115]" data-zoom="4">🌏 SE Asia</button>
+      <button class="region-btn" data-bbox="[[20,110],[45,135]]" data-center="[35,125]" data-zoom="5">🗾 East Asia</button>
+    </div>
+    <button class="connect-btn" onclick="doConnect()">Connect to live stream →</button>
+  </div>
+</div>
+<div id="dashboard">
+  <div class="topbar">
+    <span class="topbar-logo">⚓ AIS Tracker</span><span style="font-size:10px;color:#444;font-family:monospace;margin-left:4px">v2.4</span>
+    <span class="topbar-region" id="topbar-region"></span>
+    <div class="topbar-spacer"></div>
+    <div class="stat-pill"><div class="pulse" id="pulse-dot" style="display:none"></div><span class="val" id="st-vessels">0</span><span class="lbl">vessels</span></div>
+    <div class="stat-pill"><span class="val" id="st-msgs">0</span><span class="lbl">msgs</span></div>
+    <div class="stat-pill"><div class="status-dot" id="status-dot"></div><span id="st-status">—</span></div>
+    <button class="disc-btn" id="fish-btn" onclick="toggleFishing()" title="Toggle fishing areas">🎣 Fishing</button>
+    <button class="disc-btn" id="temp-btn" onclick="toggleTemp()" title="Toggle water temperature overlay">🌡️ Temp</button>
+    <button class="disc-btn" id="vessels-btn" onclick="toggleVessels()" title="Hide/show vessels">🚢 Vessels</button>
+    <button class="disc-btn" onclick="doDisconnect()">Disconnect</button>
+  </div>
+  <div class="api-err" id="api-err"></div>
+  <div class="main-body">
+    <div id="map"></div>
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-title">Live vessels</span>
+        <span id="tbl-count">0</span>
+      </div>
+      <div class="tbl-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:40%">Name / MMSI</th>
+              <th style="width:20%">Position</th>
+              <th style="width:18%">Speed</th>
+              <th style="width:22%">Type</th>
+            </tr>
+          </thead>
+          <tbody id="tbl-body"></tbody>
+        </table>
+      </div>
+      <div class="detail-panel empty" id="detail-panel">Click a vessel to inspect it</div>
+    </div>
+  </div>
+
+  <!-- Trail / History panel -->
+  <div id="trail-panel" style="display:none;position:relative;background:var(--surface);border-top:2px solid var(--green);padding:14px 16px;flex-shrink:0">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <span id="trail-name" style="font-size:13px;font-weight:600;color:var(--green)">Vessel trail</span>
+      <button onclick="clearTrail()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1">✕</button>
+    </div>
+    <div id="trail-info" style="font-size:11px;color:var(--muted);margin-bottom:8px"></div>
+    <input id="trail-slider" type="range" min="0" max="100" value="100" style="width:100%;cursor:pointer;margin-bottom:6px" oninput="scrubTrail(this.value)">
+    <div id="trail-point-info" style="font-size:11px;font-family:var(--mono);color:var(--text);line-height:1.6"></div>
+  </div>
+</div>
+<script>
+var ws,mapInst,vessels={},markers={},msgCount=0,tableTimer=null,selectedMMSI=null;
+var DB_API='https://rachelssolutions.com/ais/vessels_api.php';
+var trailLayer=null, trailMarkers=[], trailData=[];
+var reconnectTimer=null;
+
+function startSSE(){
+  if(ws){ws.close();ws=null}
+  var proto=window.location.protocol==='https:'?'wss:':'ws:';
+  ws=new WebSocket(proto+'//'+window.location.host+'/ws');
+
+  ws.onopen=function(){
+    setStatus('live','live');
+    var pd=document.getElementById('pulse-dot');if(pd)pd.style.display='inline-block';
+    // Send subscription — server injects the API key
+    ws.send(JSON.stringify({BoundingBoxes:[selBBox],FilterMessageTypes:['PositionReport','StandardClassBPositionReport','ShipStaticData']}));
+    hideApiErr();
+  };
+
+  ws.onmessage=function(e){
+    // Count every frame including binary and status
+    var rc=document.getElementById('st-raw');
+    if(rc)rc.textContent=parseInt(rc.textContent||0)+1;
+    if(typeof e.data!=='string')return;
+    var raw=e.data.trim();
+    if(!raw||raw.charAt(0)!=='{')return;
+    try{
+      var msg=JSON.parse(raw);
+      // Show first 3 non-status messages in console for debugging
+      if(!msg._status&&!msg.error){console.log('AIS msg:',JSON.stringify(msg).substring(0,200));}
+      if(msg._status){
+        var sm={'upstream_connecting':'live','proxy_ready':'proxy ready','upstream_connected':'aisstream ✓','data_flowing':'data flowing!','upstream_reconnecting':'live','upstream_closed':'upstream closed','upstream_error':'upstream error'};
+        setStatus('live',sm[msg._status]||msg._status);
+        // Resend subscription whenever upstream reconnects
+        if(msg._status==='upstream_connected'&&ws&&ws.readyState===WebSocket.OPEN){
+          ws.send(JSON.stringify({BoundingBoxes:[selBBox],FilterMessageTypes:['PositionReport','StandardClassBPositionReport','ShipStaticData']}));
+          console.log('Subscription resent after upstream connect');
+        }
+        if(msg._status==='upstream_error'||msg._status==='upstream_closed'){showApiErr('Server: '+msg._status+(msg.msg?' — '+msg.msg:''));}
+        return;
+      }
+      if(msg.error){showApiErr('API error: '+msg.error);return}
+      handleMsg(msg);
+    }catch(ex){}
+  };
+
+  ws.onerror=function(){setStatus('err','error')};
+  ws.onclose=function(){
+    setStatus('disconnected','disconnected');
+    var pd=document.getElementById('pulse-dot');if(pd)pd.style.display='none';
+    // Auto-reconnect after 3s
+    setTimeout(function(){if(ws===null)return;startSSE();},3000);
+  };
+}
+var selBBox=[[24,-82],[47,-60]],selCenter=[38,-74],selZoom=6,selRegion='US East Coast';
+
+document.querySelectorAll('.region-btn').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    document.querySelectorAll('.region-btn').forEach(function(b){b.classList.remove('active')});
+    btn.classList.add('active');
+    selBBox=JSON.parse(btn.dataset.bbox);
+    selCenter=JSON.parse(btn.dataset.center);
+    selZoom=parseInt(btn.dataset.zoom);
+    selRegion=btn.textContent.replace(/^[^\w]*/,'').trim();
+  });
+});
+
+var shipTypes={30:'Fishing',31:'Towing',32:'Towing',33:'Dredging',34:'Diving',35:'Military',36:'Sailing',37:'Pleasure',50:'Pilot',51:'SAR',52:'Tug',53:'Port tender',55:'Law enf',58:'Medical',60:'Passenger',61:'Passenger',62:'Passenger',63:'Passenger',64:'Passenger',65:'Passenger',70:'Cargo',71:'Cargo',72:'Cargo',73:'Cargo',74:'Cargo',75:'Cargo',80:'Tanker',81:'Tanker',82:'Tanker',83:'Tanker',84:'Tanker',85:'Tanker',90:'Other'};
+function getType(t){if(!t)return '';return shipTypes[t]||(t>=40&&t<50?'HSC':t>=20&&t<30?'WIG':'Other')}
+function markerColor(s){if(s==null||s<0.5)return '#5F5E5A';if(s<5)return '#d29922';return '#1D9E75'}
+function shipEmoji(s){if(s==null||s<0.5)return '⚓';if(s<5)return '🚢';return '🛳️';}
+function speedClass(s){if(s==null||s<0.5)return 'spd-stop';if(s<5)return 'spd-slow';return 'spd-move'}
+
+function doConnect(){
+  hideErr();
+  var _s=document.getElementById('setup');if(_s)_s.style.display='none';
+  var _d=document.getElementById('dashboard');if(_d)_d.style.display='flex';
+  document.getElementById('topbar-region').textContent=selRegion;
+
+  if(!mapInst){
+    mapInst=L.map('map').setView(selCenter,selZoom);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© <a href="https://openstreetmap.org">OpenStreetMap</a>',maxZoom:18}).addTo(mapInst);
+
+    // Reload temp grid whenever map moves with temp on
+    mapInst.on('moveend zoomend', function() {
+      if(!tempEnabled) return;
+      clearTimeout(zoomTempTimer);
+      zoomTempTimer = setTimeout(loadVisibleAreaGrid, 600);
+    });
+
+    // Click on water to get temp at that spot
+    mapInst.on('click', function(e) {
+      if(!tempEnabled) return;
+      var lat = parseFloat(e.latlng.lat.toFixed(4));
+      var lon = parseFloat(e.latlng.lng.toFixed(4));
+      var popup = L.popup().setLatLng(e.latlng).setContent('<i>Fetching water temp…</i>').openOn(mapInst);
+      fetch('/sst?lat='+lat+'&lon='+lon)
+        .then(function(r){return r.json()})
+        .then(function(data){
+          var rows = data && data.table && data.table.rows;
+          if(!rows||!rows[0]||rows[0][3]==null){
+            popup.setContent('No SST data at this location.');
+            return;
+          }
+          var tempC = parseFloat(rows[0][3]);
+          var tempF = (tempC*9/5+32).toFixed(1);
+          var color = tempColor(parseFloat(tempF));
+          popup.setContent(
+            '<b style="color:'+color+';font-size:16px">🌡️ '+tempF+'°F</b><br>'
+            +'<span style="color:#888">'+tempC.toFixed(1)+'°C</span><br>'
+            +'<small style="color:#666">'+lat+', '+lon+'<br>Satellite SST (yesterday)</small>'
+          );
+        }).catch(function(){popup.setContent('Could not fetch temperature.');});
+    });
+    var legend=L.control({position:'bottomleft'});
+    legend.onAdd=function(){
+      var d=document.createElement('div');d.className='legend';
+      d.innerHTML='<div class="legend-row"><div class="dot" style="background:#1D9E75"></div>Moving (&gt;5 kn)</div><div class="legend-row"><div class="dot" style="background:#d29922"></div>Slow (0.5–5 kn)</div><div class="legend-row"><div class="dot" style="background:#5F5E5A"></div>Stopped</div>';
+      return d;
+    };
+    legend.addTo(mapInst);
+  } else {
+    mapInst.setView(selCenter,selZoom);
+  }
+
+  setStatus('connecting','connecting…');
+  loadRecentFromDB(); // load last known positions immediately
+  ws=null;
+  startSSE();
+}
+
+function doDisconnect(){
+  if(ws){ws.close();ws=null}
+  Object.values(markers).forEach(function(m){m.remove()});
+  markers={};vessels={};msgCount=0;selectedMMSI=null;
+  document.getElementById('tbl-body').innerHTML='';
+  document.getElementById('st-vessels').textContent='0';
+  document.getElementById('st-msgs').textContent='0';
+  var _d=document.getElementById('dashboard');if(_d)_d.style.display='none';
+  var _s=document.getElementById('setup');if(_s)_s.style.display='flex';
+  hideApiErr();
+}
+
+function setStatus(type,text){
+  document.getElementById('st-status').textContent=text;
+  var dot=document.getElementById('status-dot');
+  dot.className='status-dot'+(type==='live'?' live':type==='error'?' error':'');
+}
+function showErr(msg){var e=document.getElementById('err');e.textContent=msg;e.style.display='block'}
+function hideErr(){document.getElementById('err').style.display='none'}
+function showApiErr(msg){var e=document.getElementById('api-err');e.textContent=msg;e.style.display='block'}
+function hideApiErr(){document.getElementById('api-err').style.display='none'}
+
+function handleMsg(msg){
+  msgCount++;
+  document.getElementById('st-msgs').textContent=msgCount.toLocaleString();
+
+  var meta=msg.MetaData||{};
+  var mmsi=meta.MMSI;
+  if(!mmsi)return;
+
+  if(!vessels[mmsi])vessels[mmsi]={mmsi:mmsi,updated:Date.now()};
+  var v=vessels[mmsi];
+  v.updated=Date.now();
+
+  // MetaData latitude/longitude are lowercase per API docs
+  var lat=parseFloat(meta.latitude||meta.Latitude||0)||null;
+  var lon=parseFloat(meta.longitude||meta.Longitude||0)||null;
+  if(lat&&lon&&Math.abs(lat)>0.001&&Math.abs(lon)>0.001){v.lat=lat;v.lon=lon}
+
+  var name=(meta.ShipName||'').trim();
+  if(name)v.name=name;
+
+  var mtype=msg.MessageType;
+  var body=msg.Message||{};
+
+  if(mtype==='PositionReport'){
+    // API uses Sog (speed over ground) and Cog (course over ground) — NOT SpeedOverGround/CourseOverGround
+    var pr=body.PositionReport||{};
+    if(pr.Sog!=null)v.speed=pr.Sog;
+    if(pr.Cog!=null&&pr.Cog<360)v.cog=pr.Cog;
+    if(pr.NavigationalStatus!=null)v.navStatus=pr.NavigationalStatus;
+    if(pr.TrueHeading!=null&&pr.TrueHeading<360)v.heading=pr.TrueHeading;
+  }
+
+  if(mtype==='StandardClassBPositionReport'){
+    // Type 18 — common on smaller/recreational vessels
+    var pr=body.StandardClassBPositionReport||{};
+    if(pr.Sog!=null)v.speed=pr.Sog;
+    if(pr.Cog!=null&&pr.Cog<360)v.cog=pr.Cog;
+    if(pr.TrueHeading!=null&&pr.TrueHeading<360)v.heading=pr.TrueHeading;
+    if(v.lat==null&&pr.Latitude&&Math.abs(pr.Latitude)>0.001){v.lat=pr.Latitude;v.lon=pr.Longitude}
+  }
+
+  if(mtype==='ExtendedClassBPositionReport'){
+    var pr=body.ExtendedClassBPositionReport||{};
+    if(pr.Sog!=null)v.speed=pr.Sog;
+    if(pr.Cog!=null&&pr.Cog<360)v.cog=pr.Cog;
+    if(pr.Type)v.type=pr.Type;
+    if(pr.Name&&pr.Name.trim())v.name=pr.Name.trim();
+    if(v.lat==null&&pr.Latitude&&Math.abs(pr.Latitude)>0.001){v.lat=pr.Latitude;v.lon=pr.Longitude}
+  }
+
+  if(mtype==='ShipStaticData'){
+    var sd=body.ShipStaticData||{};
+    if(sd.Type)v.type=sd.Type;
+    if(sd.Destination)v.destination=(sd.Destination||'').replace(/[@\x00]/g,'').trim();
+    if(sd.MaximumStaticDraught)v.draught=sd.MaximumStaticDraught;
+    if(sd.Dimension)v.dim=sd.Dimension;
+    if(sd.Name&&sd.Name.trim())v.name=sd.Name.trim();
+    if(sd.CallSign)v.callsign=sd.CallSign.trim();
+  }
+
+  // Filter excluded vessel types from map
+  if(v.type){
+    var t=v.type;
+    var excluded=(t===33||t===34||t===31||t===32||t===54)||(t>=20&&t<=29)||(t>=40&&t<=49)||(t>=70&&t<=79)||(t>=80&&t<=89);
+    if(excluded){
+      // Remove from map if already plotted
+      if(markers[mmsi]){mapInst.removeLayer(markers[mmsi]);delete markers[mmsi];}
+      delete vessels[mmsi];
+      return;
+    }
+  }
+
+  if(v.lat!=null&&v.lon!=null){
+    var color=markerColor(v.speed);
+    if(markers[mmsi]){
+      markers[mmsi].setLatLng([v.lat,v.lon]);
+      markers[mmsi].setIcon(L.divIcon({
+        className:'',
+        html:'<div style="font-size:18px;line-height:1;transform:rotate('+((v.heading||v.cog||0))+'deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))">'+shipEmoji(v.speed)+'</div>',
+        iconSize:[22,22],iconAnchor:[11,11]
+      }));
+    } else {
+      var circ=L.circleMarker([v.lat,v.lon],{radius:5,fillColor:color,color:color,weight:1.5,opacity:1,fillOpacity:0.85}).addTo(mapInst);
+      circ.bindPopup(function(){return buildPopup(mmsi)},{maxWidth:240});
+      circ.on('click',function(){selectVesselWithTrail(mmsi)});
+      markers[mmsi]=circ;
+    }
+  }
+
+  document.getElementById('st-vessels').textContent=Object.keys(vessels).length.toLocaleString();
+  if(!tableTimer)tableTimer=setTimeout(updateTable,500);
+  if(selectedMMSI===mmsi)updateDetail(mmsi);
+}
+
+function buildPopup(mmsi){
+  var v=vessels[mmsi];
+  var live=v.fromDB===false;
+  var ts=v.lastSeen?formatTime(v.lastSeen):'—';
+  var src=live?'🟢 Live':'🕐 Last known';
+  return '<div class="popup-name">'+(v.name||'Unknown')+'</div>'+
+    [['MMSI',mmsi],
+     ['Updated',src+' '+ts],
+     ['Position',v.lat!=null?v.lat.toFixed(4)+', '+v.lon.toFixed(4):'—'],
+     ['Speed',v.speed!=null?v.speed.toFixed(1)+' kn':'—'],
+     ['Course',v.cog!=null?v.cog.toFixed(1)+'°':'—'],
+     ['Type',getType(v.type)||'—'],
+     ['Destination',v.destination||'—']]
+    .map(function(r){return '<div class="popup-row"><span>'+r[0]+'</span><span>'+r[1]+'</span></div>'}).join('');
+}
+
+function selectVessel(mmsi){
+  selectedMMSI=mmsi;
+  document.querySelectorAll('tbody tr').forEach(function(tr){tr.classList.remove('selected')});
+  var row=document.querySelector('tr[data-mmsi="'+mmsi+'"]');
+  if(row){row.classList.add('selected');row.scrollIntoView({block:'nearest'})}
+  updateDetail(mmsi);
+  var v=vessels[mmsi];
+  if(v&&v.lat!=null)mapInst.panTo([v.lat,v.lon],{animate:true});
+}
+
+function updateDetail(mmsi){
+  var v=vessels[mmsi];if(!v)return;
+  var panel=document.getElementById('detail-panel');
+  panel.className='detail-panel';
+  var live=v.fromDB===false;
+  var ts=v.lastSeen?formatTime(v.lastSeen):'—';
+  var src=live?'🟢 Live':'🕐 Last known';
+  var size=v.dim?((v.dim.A||0)+(v.dim.B||0))+'×'+((v.dim.C||0)+(v.dim.D||0))+'m':'—';
+  panel.innerHTML='<div class="detail-name">'+(v.name||'MMSI '+mmsi)+'</div><div class="detail-grid">'+
+    '<div class="detail-row"><div class="detail-label">MMSI</div><div class="detail-val">'+mmsi+'</div></div>'+
+    '<div class="detail-row"><div class="detail-label">Type</div><div class="detail-val">'+(getType(v.type)||'—')+'</div></div>'+
+    '<div class="detail-row" style="grid-column:1/-1"><div class="detail-label">Last updated</div><div class="detail-val">'+src+' '+ts+'</div></div>'+
+    '<div class="detail-row"><div class="detail-label">Speed</div><div class="detail-val">'+(v.speed!=null?v.speed.toFixed(1)+' kn':'—')+'</div></div>'+
+    '<div class="detail-row"><div class="detail-label">Course</div><div class="detail-val">'+(v.cog!=null?v.cog.toFixed(1)+'°':'—')+'</div></div>'+
+    '<div class="detail-row"><div class="detail-label">Lat</div><div class="detail-val">'+(v.lat!=null?v.lat.toFixed(5):'—')+'</div></div>'+
+    '<div class="detail-row"><div class="detail-label">Lon</div><div class="detail-val">'+(v.lon!=null?v.lon.toFixed(5):'—')+'</div></div>'+
+    '<div class="detail-row"><div class="detail-label">Call sign</div><div class="detail-val">'+(v.callsign||'—')+'</div></div>'+
+    '<div class="detail-row"><div class="detail-label">Destination</div><div class="detail-val">'+(v.destination||'—')+'</div></div>'+
+    '<div class="detail-row"><div class="detail-label">Draught</div><div class="detail-val">'+(v.draught!=null?v.draught+'m':'—')+'</div></div>'+
+    '<div class="detail-row"><div class="detail-label">Size</div><div class="detail-val">'+size+'</div></div>'+
+    '</div>'+
+    '<button onclick="fetchTrail('+mmsi+')" style="width:100%;margin-top:10px;padding:8px;background:var(--green);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">📍 Show voyage history</button>';
+}
+
+function updateTable(){
+  tableTimer=null;
+  var rows=Object.values(vessels).filter(function(v){return v.lat!=null}).sort(function(a,b){return b.updated-a.updated}).slice(0,200);
+  document.getElementById('tbl-count').textContent=rows.length.toLocaleString();
+  document.getElementById('tbl-body').innerHTML=rows.map(function(v){
+    return '<tr data-mmsi="'+v.mmsi+'" onclick="selectVesselWithTrail('+v.mmsi+')" class="'+(selectedMMSI===v.mmsi?'selected':'')+'">'+
+      '<td><div class="name-cell">'+(v.name||'—')+'</div><div class="mono">'+v.mmsi+'</div></td>'+
+      '<td class="mono">'+(v.lat!=null?v.lat.toFixed(3):'-')+'<br>'+(v.lon!=null?v.lon.toFixed(3):'-')+'</td>'+
+      '<td class="'+speedClass(v.speed)+'">'+(v.speed!=null?v.speed.toFixed(1)+' kn':'—')+'</td>'+
+      '<td>'+(v.type?'<span class="type-badge">'+getType(v.type)+'</span>':'')+'</td></tr>';
+  }).join('');
+}
+
+function formatTime(dt) {
+  if(!dt)return '—';
+  var d=(dt instanceof Date)?dt:new Date((typeof dt==='string'?dt.replace(' ','T')+(dt.includes('Z')||dt.includes('+')? '':'Z'):''));
+  if(isNaN(d))return String(dt);
+  return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+
+    ' '+d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function loadRecentFromDB() {
+  fetch(DB_API+'?action=recent')
+    .then(function(r){return r.json()})
+    .then(function(data){
+      var list=data.vessels||[];
+      if(!list.length)return;
+      list.forEach(function(v){
+        var mmsi=parseInt(v.mmsi);
+        var lat=parseFloat(v.lat);
+        var lon=parseFloat(v.lon);
+        if(!mmsi||!lat||!lon)return;
+        if(!vessels[mmsi])vessels[mmsi]={mmsi:mmsi};
+        var vv=vessels[mmsi];
+        // Only set from DB if no live data yet
+        if(!vv.lat){ vv.lat=lat; vv.lon=lon; }
+        if(!vv.name&&v.name)vv.name=v.name;
+        if(!vv.speed&&v.speed!=null)vv.speed=parseFloat(v.speed);
+        if(!vv.type&&v.ship_type)vv.type=parseInt(v.ship_type);
+        if(!vv.destination&&v.destination)vv.destination=v.destination;
+        vv.lastSeen=v.last_seen; // DB timestamp
+        vv.fromDB=true;
+
+        // Plot on map
+        var color=markerColor(vv.speed);
+        if(!markers[mmsi]){
+          var icon=L.divIcon({
+            className:'',
+            html:'<div style="font-size:18px;line-height:1;transform:rotate('+((vv.heading||vv.cog||0))+'deg);filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))">'+shipEmoji(vv.speed)+'</div>',
+            iconSize:[22,22],iconAnchor:[11,11]
+          });
+          var m=L.marker([lat,lon],{icon:icon,opacity:0.7}).addTo(mapInst);
+          m.bindPopup(function(){return buildPopup(mmsi)},{maxWidth:240});
+          m.on('click',function(){selectVesselWithTrail(mmsi)});
+          markers[mmsi]=m;
+        }
+      });
+      document.getElementById('st-vessels').textContent=Object.keys(vessels).length.toLocaleString();
+      updateTable();
+      console.log('[db] loaded',list.length,'vessels from DB');
+    })
+    .catch(function(e){console.log('[db] recent load failed:',e.message)});
+}
+
+function selectVesselWithTrail(mmsi) {
+  selectVessel(mmsi);
+  fetchTrail(mmsi);
+}
+
+function fetchTrail(mmsi) {
+  var v=vessels[mmsi];
+  if(!v)return;
+  var name=v.name||'MMSI '+mmsi;
+  document.getElementById('trail-name').textContent=name+' — loading trail…';
+  document.getElementById('trail-panel').style.display='block';
+  document.getElementById('trail-info').textContent='Fetching position history…';
+
+  fetch(DB_API+'?action=history&mmsi='+mmsi+'&hours=336') // 14 days
+    .then(function(r){return r.json()})
+    .then(function(data){
+      trailData=data.points||[];
+      if(!trailData.length){
+        document.getElementById('trail-info').textContent='No history found for this vessel yet.';
+        return;
+      }
+      document.getElementById('trail-name').textContent=name;
+      document.getElementById('trail-info').textContent=trailData.length+' positions over the last 14 days';
+      document.getElementById('trail-slider').max=trailData.length-1;
+      document.getElementById('trail-slider').value=trailData.length-1;
+      drawTrail(trailData);
+      showTrailPoint(trailData.length-1);
+    })
+    .catch(function(e){
+      document.getElementById('trail-info').textContent='Error loading trail: '+e.message;
+    });
+}
+
+function drawTrail(points) {
+  clearTrailLayers();
+  if(!points.length)return;
+
+  // Draw polyline
+  var latlngs=points.map(function(p){return[parseFloat(p.lat),parseFloat(p.lon)]});
+  trailLayer=L.polyline(latlngs,{color:'#1D9E75',weight:2,opacity:0.7}).addTo(mapInst);
+
+  // Start marker
+  var startIcon=L.divIcon({className:'',html:'<div style="font-size:14px">🟢</div>',iconSize:[16,16],iconAnchor:[8,8]});
+  trailMarkers.push(L.marker(latlngs[0],{icon:startIcon}).addTo(mapInst).bindPopup('Start: '+points[0].recorded_at));
+
+  // End marker
+  var endIcon=L.divIcon({className:'',html:'<div style="font-size:14px">🔴</div>',iconSize:[16,16],iconAnchor:[8,8]});
+  var last=latlngs[latlngs.length-1];
+  trailMarkers.push(L.marker(last,{icon:endIcon}).addTo(mapInst).bindPopup('Last seen: '+points[points.length-1].recorded_at));
+
+  mapInst.fitBounds(trailLayer.getBounds(),{padding:[60,60],maxZoom:10});
+}
+
+function scrubTrail(idx) {
+  idx=parseInt(idx);
+  showTrailPoint(idx);
+  // Pan map to that point
+  if(trailData[idx]){
+    mapInst.panTo([parseFloat(trailData[idx].lat),parseFloat(trailData[idx].lon)]);
+  }
+}
+
+function showTrailPoint(idx) {
+  var p=trailData[idx];
+  if(!p)return;
+  var info=[
+    p.recorded_at,
+    'Pos: '+parseFloat(p.lat).toFixed(4)+', '+parseFloat(p.lon).toFixed(4),
+    p.speed!=null?'Speed: '+parseFloat(p.speed).toFixed(1)+' kn':'',
+    p.cog!=null?'Course: '+parseFloat(p.cog).toFixed(1)+'°':'',
+    p.destination?'Dest: '+p.destination:''
+  ].filter(Boolean).join('  |  ');
+  document.getElementById('trail-point-info').textContent=info;
+}
+
+function clearTrailLayers() {
+  if(trailLayer){mapInst.removeLayer(trailLayer);trailLayer=null;}
+  trailMarkers.forEach(function(m){mapInst.removeLayer(m)});
+  trailMarkers=[];
+}
+
+function clearTrail() {
+  clearTrailLayers();
+  trailData=[];
+  document.getElementById('trail-panel').style.display='none';
+}
+// ── ERDDAP satellite SST grid ─────────────────────────────────────────────────
+function loadERDDAPGrid() {
+  console.log('[sst] fetching full grid in one request...');
+  fetch('/sst-grid')
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if(!tempEnabled) return;
+      var pts = data.points || [];
+      console.log('[sst] got '+pts.length+' grid points, date: '+data.date);
+      pts.forEach(function(pt) {
+        addBuoyMarker(pt.lat, pt.lon, pt.tempF, 'Satellite SST', data.date, false);
+      });
+    })
+    .catch(function(e){ console.error('[sst] grid failed:', e); });
+}
+
+// ── SST Legend ───────────────────────────────────────────────────────────────
+var sstLegend = null;
+function addTempLegend() {
+  if(sstLegend) return;
+  sstLegend = L.control({position:'bottomright'});
+  sstLegend.onAdd = function() {
+    var d = document.createElement('div');
+    d.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:11px;color:var(--text);line-height:1.8;box-shadow:0 2px 8px rgba(0,0,0,.4)';
+    d.innerHTML = '<div style="font-weight:600;margin-bottom:6px;color:var(--green)">🌡️ Water Temp</div>'
+      + '<div style="display:flex;align-items:center;gap:6px"><div style="width:120px;height:12px;border-radius:3px;background:linear-gradient(to right,#0000ff,#00aaff,#00ffcc,#00cc44,#ffcc00,#ff8800,#ff2200)"></div></div>'
+      + '<div style="display:flex;justify-content:space-between;width:120px;font-size:9px;color:var(--muted);margin-top:2px"><span>32°F</span><span>50°F</span><span>68°F</span><span>86°F</span></div>';
+    return d;
+  };
+  sstLegend.addTo(mapInst);
+}
+function removeTempLegend() {
+  if(sstLegend) { sstLegend.remove(); sstLegend = null; }
+}
+
+// ── Dynamic fine grid for zoomed-in view ─────────────────────────────────────
+var visibleGridLoaded = false;
+var lastZoomBounds = null;
+var zoomTempTimer = null;
+var pendingFetches = [];
+
+function loadVisibleAreaGrid() {
+  if(!tempEnabled||!mapInst) return;
+  var bounds = mapInst.getBounds();
+  var boundsStr = bounds.toBBoxString();
+  if(boundsStr === lastZoomBounds) return;
+  lastZoomBounds = boundsStr;
+
+  var zoom  = mapInst.getZoom();
+  var south = Math.max(bounds.getSouth(), 20);
+  var north = Math.min(bounds.getNorth(), 50);
+  var west  = Math.max(bounds.getWest(), -85);
+  var east  = Math.min(bounds.getEast(), -55);
+
+  if(south >= north || west >= east) return;
+
+  // Density based on zoom level
+  var density = zoom >= 10 ? 10 : zoom >= 8 ? 8 : zoom >= 6 ? 6 : 5;
+  var latStep = (north - south) / density;
+  var lonStep = (east  - west)  / density;
+
+  // Remove only the zoomed-in markers (keep coast/NDBC ones)
+  buoyMarkers = buoyMarkers.filter(function(m) {
+    if(m._isZoomMarker) { mapInst.removeLayer(m); return false; }
+    return true;
+  });
+
+  var pts = [];
+  for(var la = south + latStep/2; la < north; la += latStep) {
+    for(var lo = west + lonStep/2; lo < east; lo += lonStep) {
+      pts.push([parseFloat(la.toFixed(3)), parseFloat(lo.toFixed(3))]);
+    }
+  }
+
+  // Filter to ocean-only points (rough bounding check to skip inland/Great Lakes)
+  pts = pts.filter(function(pt) {
+    var la=pt[0], lo=pt[1];
+    // Skip Great Lakes region
+    if(la>41&&la<47&&lo>-84&&lo<-76) return false;
+    // Skip deep inland (rough check - east coast land mass)
+    if(lo>-70&&la>40&&la<45) return false; // New England inland
+    if(lo>-75&&la>38&&la<42) return false; // Mid-Atlantic inland
+    if(lo>-77&&la>35&&la<39) return false; // Chesapeake inland
+    return true;
+  });
+
+  pts.forEach(function(pt, i) {
+    setTimeout(function() {
+      if(!tempEnabled) return;
+      fetchSST(pt[0], pt[1], 0, true);
+    }, i * 200);
+  });
+}
+
+// ── Toggle vessels visibility ──────────────────────────────────────────────────
+var vesselsVisible = true;
+function toggleVessels() {
+  vesselsVisible = !vesselsVisible;
+  var btn = document.getElementById('vessels-btn');
+  Object.values(markers).forEach(function(m) {
+    if(vesselsVisible) mapInst.addLayer(m);
+    else mapInst.removeLayer(m);
+  });
+  btn.textContent = vesselsVisible ? '🚢 Vessels' : '🚢 Hidden';
+  btn.style.opacity = vesselsVisible ? '1' : '0.5';
+}
+
+// ── Water Temperature ─────────────────────────────────────────────────────────
+var tempLayerSST = null;
+var buoyMarkers  = [];
+var tempEnabled  = false;
+
+// Shared date string for SST requests (yesterday's date)
+function getSSTDate() {
+  var d = new Date();
+  d.setDate(d.getDate()-1);
+  return d.getUTCFullYear()+'-'
+    +String(d.getUTCMonth()+1).padStart(2,'0')+'-'
+    +String(d.getUTCDate()).padStart(2,'0')+'T00:00:00Z';
+}
+
+// East Coast NOAA buoy station IDs (CO-OPS stations with water temp)
+// CO-OPS coastal stations
+var COOPS_STATIONS = [
+  {id:'8443970',name:'Boston, MA'},
+  {id:'8447930',name:'Woods Hole, MA'},
+  {id:'8447386',name:'Fall River, MA'},
+  {id:'8449130',name:'Nantucket, MA'},
+  {id:'8452660',name:'Newport, RI'},
+  {id:'8461490',name:'New London, CT'},
+  {id:'8465705',name:'New Haven, CT'},
+  {id:'8510560',name:'Montauk, NY'},
+  {id:'8516945',name:'Kings Point, NY'},
+  {id:'8518750',name:'The Battery, NY'},
+  {id:'8519483',name:'Bergen Point, NY'},
+  {id:'8530973',name:'Raritan Bay, NJ'},
+  {id:'8531680',name:'Sandy Hook, NJ'},
+  {id:'8534720',name:'Atlantic City, NJ'},
+  {id:'8536110',name:'Cape May, NJ'},
+  {id:'8557380',name:'Lewes, DE'},
+  {id:'8570283',name:'Ocean City Inlet, MD'},
+  {id:'8574680',name:'Baltimore, MD'},
+  {id:'8571892',name:'Cambridge, MD'},
+  {id:'8594900',name:'Washington DC'},
+  {id:'8632200',name:'Kiptopeke, VA'},
+  {id:'8638610',name:'Sewells Point, VA'},
+  {id:'8637689',name:'Yorktown, VA'},
+  {id:'8651370',name:'Duck, NC'},
+  {id:'8654467',name:'USCG Station, NC'},
+  {id:'8656483',name:'Beaufort, NC'},
+  {id:'8658120',name:'Wilmington, NC'},
+  {id:'8661070',name:'Springmaid Pier, SC'},
+  {id:'8665530',name:'Charleston, SC'},
+  {id:'8670870',name:'Fort Pulaski, GA'},
+  {id:'8679511',name:'Brunswick, GA'},
+  {id:'8720218',name:'Mayport, FL'},
+  {id:'8721604',name:'Trident Pier, FL'},
+  {id:'8722670',name:'Lake Worth Pier, FL'},
+  {id:'8723214',name:'Virginia Key, FL'},
+  {id:'8724580',name:'Key West, FL'},
+  {id:'8725110',name:'Naples, FL'},
+  {id:'8726520',name:'St. Petersburg, FL'},
+];
+
+// NDBC offshore buoys - fetch via NDBC text format
+var NDBC_BUOYS = [
+  {id:'44013',name:'Boston 16nm',lat:42.346,lon:-70.651},
+  {id:'44025',name:'S of Long Island',lat:40.251,lon:-73.164},
+  {id:'44065',name:'New York Harbor',lat:40.369,lon:-73.703},
+  {id:'44009',name:'Delaware Bay',lat:38.457,lon:-74.702},
+  {id:'44025',name:'S of LI 40nm',lat:40.251,lon:-73.164},
+  {id:'41047',name:'NE of Bahamas',lat:27.514,lon:-71.494},
+  {id:'41048',name:'W Hatteras',lat:31.839,lon:-69.588},
+  {id:'41046',name:'SE Hatteras',lat:23.822,lon:-75.148},
+  {id:'41004',name:'EDISTO',lat:32.501,lon:-79.099},
+  {id:'41008',name:'Grays Reef',lat:31.400,lon:-80.868},
+  {id:'41010',name:'Canaveral E',lat:28.906,lon:-78.471},
+  {id:'41047',name:'NE Bahamas',lat:27.514,lon:-71.494},
+  {id:'44014',name:'Virginia Beach',lat:36.611,lon:-74.836},
+  {id:'44017',name:'Montauk Pt',lat:40.692,lon:-72.046},
+  {id:'44020',name:'Nantucket Sound',lat:41.493,lon:-70.179},
+  {id:'44027',name:'Jonesport, ME',lat:44.270,lon:-67.310},
+  {id:'44030',name:'Pemaquid Pt, ME',lat:43.980,lon:-69.329},
+  {id:'44033',name:'Frenchman Bay, ME',lat:44.416,lon:-68.113},
+  {id:'44034',name:'Upper Slope',lat:43.522,lon:-66.312},
+  {id:'44037',name:'Jordan Basin',lat:43.506,lon:-67.937},
+  {id:'44038',name:'Jeffreys Ledge',lat:42.966,lon:-69.768},
+  {id:'44098',name:'Jeffreys Ledge',lat:42.798,lon:-69.317},
+  {id:'44066',name:'E of Delaware Bay',lat:39.618,lon:-72.644},
+  {id:'44072',name:'SW of Bermuda',lat:31.887,lon:-64.919},
+];
+
+var BUOY_STATIONS = COOPS_STATIONS;
+
+function tempColor(f) {
+  // Map temperature in F to a color: cold=blue, cool=teal, warm=orange, hot=red
+  if(f < 45)  return '#0000ff';
+  if(f < 55)  return '#00aaff';
+  if(f < 65)  return '#00ffcc';
+  if(f < 72)  return '#00cc44';
+  if(f < 78)  return '#ffcc00';
+  if(f < 82)  return '#ff8800';
+  return '#ff2200';
+}
+
+function toggleTemp() {
+  tempEnabled = !tempEnabled;
+  var btn = document.getElementById('temp-btn');
+  if(tempEnabled) {
+    btn.classList.add('temp-active');
+    loadTempOverlay();
+    loadBuoyTemps();
+  } else {
+    btn.classList.remove('temp-active');
+    removeTempOverlay();
+  }
+}
+
+function loadTempOverlay() {
+  if(tempLayerSST) return;
+  // NOAA CoastWatch WMS — satellite sea surface temperature
+  // NOAA CoastWatch ERDDAP WMS - SST color tile overlay
+  // Uses EPSG:3857 (standard web mercator) for Leaflet compatibility
+  var yesterday = new Date();
+  yesterday.setDate(yesterday.getDate()-1);
+  var yr = yesterday.getUTCFullYear();
+  var mo = String(yesterday.getUTCMonth()+1).padStart(2,'0');
+  var dy = String(yesterday.getUTCDate()).padStart(2,'0');
+  var sstDate = yr+'-'+mo+'-'+dy+'T00:00:00Z';
+
+  // NASA GIBS WMTS - GHRSST MUR Sea Surface Temperature
+  // Native EPSG:3857, works at zoom 1-7, updated daily
+  // Colors: blue=cold, red=warm (same scale as buoy markers)
+  tempLayerSST = L.tileLayer(
+    'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GHRSST_L4_MUR_Sea_Surface_Temperature/default/'+yr+'-'+mo+'-'+dy+'/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png',
+    {
+      opacity:     0.6,
+      attribution: 'NASA GIBS / JPL MUR SST',
+      maxNativeZoom: 7,
+      maxZoom:     18,
+      tileSize:    256,
+      errorTileUrl: ''
+    }
+  );
+  tempLayerSST.addTo(mapInst);
+
+  // Add a temperature color legend
+  addTempLegend();
+}
+
+function removeTempOverlay() {
+  if(tempLayerSST) { mapInst.removeLayer(tempLayerSST); tempLayerSST = null; }
+  buoyMarkers.forEach(function(m){ mapInst.removeLayer(m); });
+  buoyMarkers = [];
+  removeTempLegend();
+}
+
+function fetchSST(lat, lon, attempt, isZoom) {
+  if(!tempEnabled) return;
+  fetch('/sst?lat='+lat+'&lon='+lon)
+    .then(function(r){ return r.text(); })
+    .then(function(text) {
+      if(!tempEnabled) return;
+      if(!text || text.charAt(0) !== '{') return; // land/invalid point — silently skip
+      try {
+        var data = JSON.parse(text);
+        var rows = data && data.table && data.table.rows;
+        if(!rows || !rows[0] || rows[0][3]==null) return;
+        var tempC = parseFloat(rows[0][3]);
+        if(isNaN(tempC)||tempC<-2||tempC>40) return;
+        var tempF = parseFloat((tempC*9/5+32).toFixed(1));
+        addBuoyMarker(lat, lon, tempF, 'Satellite SST', 'yesterday', isZoom);
+      } catch(e) { /* silently skip bad responses */ }
+    })
+    .catch(function() {});
+}
+
+function addBuoyMarker(lat, lon, tempF, name, time, isZoom) {
+  if(!tempEnabled||!mapInst)return;
+  var color = tempColor(tempF);
+  var tempC = ((tempF-32)*5/9).toFixed(1);
+  // Small compact label - just the number, color coded
+  var html = '<div style="'
+    +'color:'+color+';'
+    +'font-size:11px;'
+    +'font-weight:700;'
+    +'font-family:monospace;'
+    +'background:rgba(0,0,0,0.55);'
+    +'padding:1px 4px;'
+    +'border-radius:3px;'
+    +'border:1px solid '+color+';'
+    +'white-space:nowrap;'
+    +'pointer-events:auto;'
+    +'cursor:pointer;'
+    +'line-height:1.4;'
+    +'">'+tempF.toFixed(1)+'°F</div>';
+  var icon = L.divIcon({
+    className: '',
+    html: html,
+    iconSize: [55, 18],
+    iconAnchor: [27, 9]
+  });
+  var m = L.marker([lat,lon],{icon:icon,zIndexOffset:-100})
+    .addTo(mapInst)
+    .bindPopup('<b>'+name+'</b><br>Water temp: <b style="color:'+color+'">'+tempF.toFixed(1)+'°F / '+tempC+'°C</b>'+(time?'<br><small>'+time+'</small>':''));
+  if(isZoom) m._isZoomMarker = true;
+  buoyMarkers.push(m);
+}
+
+function loadBuoyTemps() {
+  buoyMarkers.forEach(function(m){ mapInst.removeLayer(m); });
+  buoyMarkers = [];
+
+  // CO-OPS coastal stations
+  BUOY_STATIONS.forEach(function(st) {
+    fetch('https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?date=latest&station='+st.id+'&product=water_temperature&units=english&time_zone=gmt&format=json')
+      .then(function(r){ return r.json(); })
+      .then(function(data) {
+        if(!tempEnabled) return;
+        var reading = data && data.data && data.data[0];
+        if(!reading || reading.v === undefined) return;
+        var tempF = parseFloat(reading.v);
+        fetch('https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/'+st.id+'.json')
+          .then(function(r){ return r.json(); })
+          .then(function(meta) {
+            var s = meta.stations && meta.stations[0];
+            if(s && s.lat && s.lng) addBuoyMarker(s.lat, s.lng, tempF, st.name, reading.t+' UTC');
+          }).catch(function(){});
+      }).catch(function(){});
+  });
+
+  // ERDDAP satellite SST grid points across East Coast offshore waters
+  loadERDDAPGrid();
+
+  // NDBC offshore buoys - fetch JSON from NOAA ERDDAP
+  NDBC_BUOYS.forEach(function(buoy) {
+    var url = '/ndbc?id=' + buoy.id;
+    fetch(url)
+      .then(function(r){ return r.text(); })
+      .then(function(txt) {
+        if(!tempEnabled) return;
+        var lines = txt.trim().split('\n');
+        if(lines.length < 3) return;
+        var header = lines[0].replace(/^#/g,'').trim().split(/[ \t]+/);
+        var wtmpIdx = header.indexOf('WTMP');
+        if(wtmpIdx < 0) return;
+        for(var i=2; i<Math.min(8,lines.length); i++) {
+          var cols = lines[i].trim().split(/[ \t]+/);
+          var wtmp = parseFloat(cols[wtmpIdx]);
+          if(isNaN(wtmp)||wtmp>98||wtmp<=0) continue;
+          var tempF = parseFloat((wtmp*9/5+32).toFixed(1));
+          addBuoyMarker(buoy.lat, buoy.lon, tempF, buoy.name+' (NDBC '+buoy.id+')', 'Offshore buoy');
+          break;
+        }
+      }).catch(function(){});
+  });
+}
+
+// ── Fishing Areas ─────────────────────────────────────────────────────────────
+var fishingEnabled  = false;
+var fishingMarkers  = [];
+
+var FISHING_AREAS = [
+  { name: 'Hudson Canyon (Mouth)',     lat: 39 + 41.049/60, lon: -(72 + 29.015/60) },
+  { name: 'Hudson Canyon (Tip/Upper)', lat: 39 + 40.956/60, lon: -(72 + 28.865/60) },
+  { name: 'West Atlantis Canyon',      lat: 40 + 4.500/60,  lon: -(70 + 27.000/60) },
+  { name: 'Atlantis Canyon',           lat: 40 + 4.40/60,   lon: -(70 + 11.64/60)  },
+  { name: 'East Atlantis Canyon',      lat: 39 + 57.500/60, lon: -(69 + 55.000/60) },
+  { name: 'Veatch Canyon',             lat: 40 + 0.000/60,  lon: -(69 + 37.000/60) },
+];
+
+function toggleFishing() {
+  fishingEnabled = !fishingEnabled;
+  var btn = document.getElementById('fish-btn');
+  if(fishingEnabled) {
+    btn.style.borderColor = '#1D9E75';
+    btn.style.color = '#1D9E75';
+    loadFishingAreas();
+  } else {
+    btn.style.borderColor = '';
+    btn.style.color = '';
+    fishingMarkers.forEach(function(m){ mapInst.removeLayer(m); });
+    fishingMarkers = [];
+  }
+}
+
+function loadFishingAreas() {
+  fishingMarkers.forEach(function(m){ mapInst.removeLayer(m); });
+  fishingMarkers = [];
+
+  FISHING_AREAS.forEach(function(area) {
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="'
+        + 'display:flex;flex-direction:column;align-items:center;'
+        + 'cursor:pointer;'
+        + '">'
+        + '<div style="font-size:22px;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7))">🐟</div>'
+        + '<div style="'
+        + 'background:rgba(0,0,0,0.72);'
+        + 'color:#fff;'
+        + 'font-size:10px;'
+        + 'font-weight:600;'
+        + 'padding:2px 6px;'
+        + 'border-radius:3px;'
+        + 'border:1px solid rgba(255,255,255,0.3);'
+        + 'white-space:nowrap;'
+        + 'margin-top:2px;'
+        + 'max-width:140px;'
+        + 'text-align:center;'
+        + 'line-height:1.3;'
+        + '">'+area.name+'</div>'
+        + '</div>',
+      iconSize:   [140, 50],
+      iconAnchor: [70, 25]
+    });
+
+    var lat = area.lat, lon = area.lon;
+    var latDeg  = Math.floor(Math.abs(lat));
+    var latMin  = ((Math.abs(lat) - latDeg) * 60).toFixed(3);
+    var lonDeg  = Math.floor(Math.abs(lon));
+    var lonMin  = ((Math.abs(lon) - lonDeg) * 60).toFixed(3);
+    var coords  = latDeg+"° "+latMin+"' N / "+lonDeg+"° "+lonMin+"' W";
+
+    var m = L.marker([lat, lon], { icon: icon, zIndexOffset: 500 })
+      .addTo(mapInst)
+      .bindPopup(
+        '<div style="font-weight:700;font-size:13px;color:#1D9E75;margin-bottom:4px">🐟 '+area.name+'</div>'
+        + '<div style="font-size:11px;font-family:monospace;color:#aaa">'+coords+'</div>'
+      );
+    fishingMarkers.push(m);
+  });
+
+  // Pan map to show all fishing areas
+  var group = L.featureGroup(fishingMarkers);
+  mapInst.fitBounds(group.getBounds().pad(0.3), { maxZoom: 10 });
+}
+
+</script>
+</body>
+</html>
