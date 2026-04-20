@@ -208,19 +208,63 @@ app.get('/depth-grid', (req, res) => {
   }
   console.log('[depth-grid] fetching', points.length, 'depth points');
 
-  // Fetch depths from NOAA GMRT REST API
+  // Use ERDDAP batch CSV for the whole East Coast grid at once
+  // ETOPO1 has no time dim: altitude[(lat_start):(stride):(lat_stop)][(lon_start):(stride):(lon_stop)]
+  // Use stride 6 = ~0.1 degrees for decent coverage
+  const batchUrl = 'https://coastwatch.pfeg.noaa.gov/erddap/griddap/etopo180.csv?altitude%5B(24.0):6:(47.0)%5D%5B(-82.0):6:(-60.0)%5D';
+  console.log('[depth-grid] fetching batch from ETOPO:', batchUrl);
+  
+  const batchReq = https.get(batchUrl, (r) => {
+    let data = '';
+    r.on('data', d => data += d);
+    r.on('end', () => {
+      try {
+        const lines = data.trim().split('\n');
+        const results = [];
+        // Skip 2 header rows
+        for (let i = 2; i < lines.length; i++) {
+          const cols = lines[i].split(',');
+          if (cols.length < 3) continue;
+          const lat = parseFloat(cols[0]);
+          const lon = parseFloat(cols[1]);
+          const elev = parseFloat(cols[2]);
+          if (isNaN(lat) || isNaN(lon) || isNaN(elev)) continue;
+          if (elev >= 0) continue; // skip land
+          const depthFt = Math.round(Math.abs(elev) * 3.28084);
+          if (depthFt < 10) continue; // skip very shallow
+          results.push({ lat: Math.round(lat*100)/100, lon: Math.round(lon*100)/100, depthFt });
+        }
+        console.log('[depth-grid] parsed', results.length, 'ocean depth points');
+        depthCache = { points: results };
+        depthCacheTime = Date.now();
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.json(depthCache);
+      } catch(e) {
+        console.error('[depth-grid] parse error:', e.message);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.json({ points: [], error: e.message });
+      }
+    });
+  });
+  batchReq.setTimeout(30000, () => {
+    batchReq.destroy();
+    console.error('[depth-grid] batch timeout');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.json(depthCache || { points: [], error: 'timeout' });
+  });
+  batchReq.on('error', (e) => {
+    console.error('[depth-grid] batch error:', e.message);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.json(depthCache || { points: [], error: e.message });
+  });
+  return; // early return - batch handles the response
+
+  // Individual point fetching (fallback - not used with batch)
   let results = [];
   let pending = points.length;
 
-  // Use NOAA NCEI REST API for bathymetry points
-  // Format: https://maps.ngdc.noaa.gov/arcgis/rest/services/web_mercator/multibeam_dynamic/MapServer/identify
-  // Simpler: use Open-Elevation or ETOPO dataset via a direct CSV fetch from ERDDAP
-  // ETOPO 2022 on ERDDAP - works for ocean depths
-  const d = new Date();
-  d.setFullYear(d.getFullYear() - 1); // ETOPO is static, use any date
-  
-  // Build a batch URL fetching all points as a CSV from ERDDAP ETOPO dataset
-  // Use NOAA ETOPO 2022 - 15 arc second global relief
+  // Use ETOPO1 on ERDDAP - static dataset, no time dimension
+  // Correct URL format: altitude[(lat)][lon] - no time dimension
   const fetchDepthPoint = (pt, cb) => {
     const url = `https://coastwatch.pfeg.noaa.gov/erddap/griddap/etopo180.json?altitude%5B(${pt.lat})%5D%5B(${pt.lon})%5D`;
     const req = https.get(url, (r) => {
