@@ -119,7 +119,7 @@ tr.selected td{background:rgba(29,158,117,.12)}
 </div>
 <div id="dashboard">
   <div class="topbar">
-    <span class="topbar-logo">⚓ AIS Tracker</span><span style="font-size:10px;color:#444;font-family:monospace;margin-left:4px">v2.5</span>
+    <span class="topbar-logo">⚓ AIS Tracker</span><span style="font-size:10px;color:#444;font-family:monospace;margin-left:4px">v2.6</span>
     <span class="topbar-region" id="topbar-region"></span>
     <div class="topbar-spacer"></div>
     <div class="stat-pill"><div class="pulse" id="pulse-dot" style="display:none"></div><span class="val" id="st-vessels">0</span><span class="lbl">vessels</span></div>
@@ -615,19 +615,28 @@ function clearTrail() {
   document.getElementById('trail-panel').style.display='none';
 }
 // ── ERDDAP satellite SST grid ─────────────────────────────────────────────────
-function loadERDDAPGrid() {
-  console.log('[sst] fetching full grid in one request...');
+function loadERDDAPGrid(attempt) {
+  attempt = attempt || 0;
+  console.log('[sst] fetching grid, attempt', attempt+1);
   fetch('/sst-grid')
     .then(function(r){ return r.json(); })
     .then(function(data) {
       if(!tempEnabled) return;
       var pts = data.points || [];
-      console.log('[sst] got '+pts.length+' grid points, date: '+data.date);
+      console.log('[sst] got '+pts.length+' points, date: '+data.date);
+      if(pts.length === 0 && attempt < 2) {
+        // Empty response — retry after 5s (server may still be fetching)
+        setTimeout(function(){ loadERDDAPGrid(attempt+1); }, 5000);
+        return;
+      }
       pts.forEach(function(pt) {
         addBuoyMarker(pt.lat, pt.lon, pt.tempF, 'Satellite SST', data.date, false);
       });
     })
-    .catch(function(e){ console.error('[sst] grid failed:', e); });
+    .catch(function(e){
+      console.error('[sst] grid failed:', e);
+      if(attempt < 2) setTimeout(function(){ loadERDDAPGrid(attempt+1); }, 5000);
+    });
 }
 
 // ── SST Legend ───────────────────────────────────────────────────────────────
@@ -847,18 +856,43 @@ function loadTempOverlay() {
   // NASA GIBS WMTS - GHRSST MUR Sea Surface Temperature
   // Native EPSG:3857, works at zoom 1-7, updated daily
   // Colors: blue=cold, red=warm (same scale as buoy markers)
-  tempLayerSST = L.tileLayer(
-    'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GHRSST_L4_MUR_Sea_Surface_Temperature/default/'+yr+'-'+mo+'-'+dy+'/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png',
-    {
-      opacity:     0.6,
-      attribution: 'NASA GIBS / JPL MUR SST',
+  // Try dates going back up to 4 days (GIBS is often 2-3 days behind)
+  function tryGIBSDate(daysBack) {
+    var d2 = new Date();
+    d2.setDate(d2.getDate() - daysBack);
+    var y2 = d2.getUTCFullYear();
+    var m2 = String(d2.getUTCMonth()+1).padStart(2,'0');
+    var d2s = String(d2.getUTCDate()).padStart(2,'0');
+    var dateStr = y2+'-'+m2+'-'+d2s;
+    var url = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GHRSST_L4_MUR_Sea_Surface_Temperature/default/'+dateStr+'/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png';
+
+    var layer = L.tileLayer(url, {
+      opacity: 0.6,
+      attribution: 'NASA GIBS SST '+dateStr,
       maxNativeZoom: 7,
-      maxZoom:     18,
-      tileSize:    256,
-      errorTileUrl: ''
-    }
-  );
-  tempLayerSST.addTo(mapInst);
+      maxZoom: 18,
+      tileSize: 256
+    });
+
+    var tested = false;
+    layer.on('tileload', function() {
+      if(!tested) { tested=true; console.log('[gibs] tiles loaded for', dateStr); }
+    });
+    layer.on('tileerror', function() {
+      if(!tested && daysBack < 5) {
+        tested=true;
+        console.log('[gibs] no tiles for', dateStr, '— trying', daysBack+1, 'days back');
+        mapInst.removeLayer(layer);
+        tempLayerSST = null;
+        tryGIBSDate(daysBack+1);
+      }
+    });
+
+    tempLayerSST = layer;
+    layer.addTo(mapInst);
+  }
+
+  tryGIBSDate(2); // start 2 days back
 
   // Add a temperature color legend
   addTempLegend();
