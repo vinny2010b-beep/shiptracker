@@ -119,7 +119,7 @@ tr.selected td{background:rgba(29,158,117,.12)}
 </div>
 <div id="dashboard">
   <div class="topbar">
-    <span class="topbar-logo">⚓ AIS Tracker</span><span style="font-size:10px;color:#444;font-family:monospace;margin-left:4px">v2.7</span>
+    <span class="topbar-logo">⚓ AIS Tracker</span><span style="font-size:10px;color:#444;font-family:monospace;margin-left:4px">v2.8</span>
     <span class="topbar-region" id="topbar-region"></span>
     <div class="topbar-spacer"></div>
     <div class="stat-pill"><div class="pulse" id="pulse-dot" style="display:none"></div><span class="val" id="st-vessels">0</span><span class="lbl">vessels</span></div>
@@ -169,6 +169,32 @@ tr.selected td{background:rgba(29,158,117,.12)}
 </div>
 <script>
 var ws,mapInst,vessels={},markers={},msgCount=0,tableTimer=null,selectedMMSI=null;
+
+// ── Viewport-based rendering ───────────────────────────────────────────────
+// All data stored in memory; only markers in view are rendered
+var allDepthPoints  = [];  // full depth dataset
+var allTempPoints   = [];  // full SST dataset
+var renderTimer     = null;
+
+function inBounds(lat, lon, bounds) {
+  return lat >= bounds.getSouth() && lat <= bounds.getNorth() &&
+         lon >= bounds.getWest()  && lon <= bounds.getEast();
+}
+
+function scheduleRender() {
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(renderViewport, 400);
+}
+
+function renderViewport() {
+  if(!mapInst) return;
+  var bounds = mapInst.getBounds();
+  var zoom   = mapInst.getZoom();
+
+  if(bathyEnabled)  renderDepthMarkers(bounds, zoom);
+  if(tempEnabled)   renderTempMarkers(bounds, zoom);
+  if(fishingEnabled) renderFishingMarkers(bounds, zoom);
+}
 var DB_API='https://rachelssolutions.com/ais/vessels_api.php';
 var trailLayer=null, trailMarkers=[], trailData=[];
 var reconnectTimer=null;
@@ -250,12 +276,9 @@ function doConnect(){
     mapInst=L.map('map').setView(selCenter,selZoom);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© <a href="https://openstreetmap.org">OpenStreetMap</a>',maxZoom:18}).addTo(mapInst);
 
-    // Reload temp or depth grid whenever map moves
+    // Re-render all layers on pan/zoom
     mapInst.on('moveend zoomend', function() {
-      if(tempEnabled) {
-        clearTimeout(zoomTempTimer);
-        zoomTempTimer = setTimeout(loadVisibleAreaGrid, 600);
-      }
+      scheduleRender();
     });
 
     // Click on water to get temp or depth at that spot
@@ -633,27 +656,46 @@ function clearTrail() {
 }
 // ── ERDDAP satellite SST grid ─────────────────────────────────────────────────
 function loadERDDAPGrid(attempt) {
+  if(allTempPoints.length > 0) { renderTempMarkers(mapInst.getBounds(), mapInst.getZoom()); return; }
   attempt = attempt || 0;
-  console.log('[sst] fetching grid, attempt', attempt+1);
   fetch('/sst-grid')
     .then(function(r){ return r.json(); })
     .then(function(data) {
-      if(!tempEnabled) return;
       var pts = data.points || [];
-      console.log('[sst] got '+pts.length+' points, date: '+data.date);
       if(pts.length === 0 && attempt < 2) {
-        // Empty response — retry after 5s (server may still be fetching)
-        setTimeout(function(){ loadERDDAPGrid(attempt+1); }, 5000);
-        return;
+        setTimeout(function(){ loadERDDAPGrid(attempt+1); }, 5000); return;
       }
-      pts.forEach(function(pt) {
-        addBuoyMarker(pt.lat, pt.lon, pt.tempF, 'Satellite SST', data.date, false);
-      });
+      allTempPoints = pts;
+      console.log('[sst] loaded '+pts.length+' temp points into memory');
+      renderTempMarkers(mapInst.getBounds(), mapInst.getZoom());
     })
     .catch(function(e){
-      console.error('[sst] grid failed:', e);
       if(attempt < 2) setTimeout(function(){ loadERDDAPGrid(attempt+1); }, 5000);
     });
+}
+
+function renderTempMarkers(bounds, zoom) {
+  // Remove only SST grid markers (not buoy station markers)
+  buoyMarkers = buoyMarkers.filter(function(m) {
+    if(m._isSSTGrid) { mapInst.removeLayer(m); return false; }
+    return true;
+  });
+  if(!tempEnabled || !allTempPoints.length) return;
+
+  var minSpacing = zoom >= 9 ? 0.1 : zoom >= 7 ? 0.3 : zoom >= 6 ? 0.5 : zoom >= 5 ? 1.0 : 2.0;
+  var shown = {};
+  var count = 0;
+
+  allTempPoints.forEach(function(pt) {
+    if(!inBounds(pt.lat, pt.lon, bounds)) return;
+    var key = Math.round(pt.lat/minSpacing)+'_'+Math.round(pt.lon/minSpacing);
+    if(shown[key]) return;
+    shown[key] = true;
+    count++;
+    if(count > 200) return;
+    var m = addBuoyMarker(pt.lat, pt.lon, pt.tempF, 'Satellite SST', null, false);
+    if(m) m._isSSTGrid = true;
+  });
 }
 
 // ── SST Legend ───────────────────────────────────────────────────────────────
@@ -972,6 +1014,7 @@ function addBuoyMarker(lat, lon, tempF, name, time, isZoom) {
     .bindPopup('<b>'+name+'</b><br>Water temp: <b style="color:'+color+'">'+tempF.toFixed(1)+'°F / '+tempC+'°C</b>'+(time?'<br><small>'+time+'</small>':''));
   if(isZoom) m._isZoomMarker = true;
   buoyMarkers.push(m);
+  return m;
 }
 
 function loadBuoyTemps() {
@@ -1267,10 +1310,40 @@ function loadFishingAreas() {
     fishingMarkers.push(m);
   });
 
-  if(fishingMarkers.length>0){
-    var group=L.featureGroup(fishingMarkers);
-    mapInst.fitBounds(group.getBounds().pad(0.2),{maxZoom:10});
-  }
+  // Don't auto-pan - render only what's visible
+  renderFishingMarkers(mapInst.getBounds(), mapInst.getZoom());
+}
+
+function renderFishingMarkers(bounds, zoom) {
+  fishingMarkers.forEach(function(m){ mapInst.removeLayer(m); });
+  fishingMarkers = [];
+  if(!fishingEnabled) return;
+  var minLabel = zoom >= 10 ? 0 : zoom >= 8 ? 50 : zoom >= 7 ? 100 : zoom >= 6 ? 200 : 400;
+  FISHING_AREAS.forEach(function(area) {
+    if(!inBounds(area.lat, area.lon, bounds)) return;
+    if(area.depth && area.depth < minLabel) return;
+    var ico = fishIcon(area.type);
+    var depthStr = area.depth ? area.depth+"'" : '';
+    var html = '<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer">'
+      + '<div style="font-size:16px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.8))">'+ico+'</div>'
+      + '<div style="background:rgba(0,0,0,0.75);color:#fff;font-size:9px;font-weight:600;'
+      + 'padding:1px 4px;border-radius:2px;white-space:nowrap;margin-top:1px;max-width:120px;'
+      + 'text-align:center;line-height:1.3;border:1px solid rgba(255,255,255,0.25)">'
+      + area.name + (depthStr ? '<br><span style="color:#aef">'+depthStr+'</span>' : '')
+      + '</div></div>';
+    var icon = L.divIcon({ className:'', html:html, iconSize:[120,44], iconAnchor:[60,22] });
+    var lat=area.lat, lon=area.lon;
+    var latDeg=Math.floor(Math.abs(lat)), latMin=((Math.abs(lat)-latDeg)*60).toFixed(3);
+    var lonDeg=Math.floor(Math.abs(lon)), lonMin=((Math.abs(lon)-lonDeg)*60).toFixed(3);
+    var coords=latDeg+"° "+latMin+"' N / "+lonDeg+"° "+lonMin+"' W";
+    var popup='<div style="font-weight:700;font-size:13px;color:#1D9E75;margin-bottom:4px">'
+      +ico+' '+area.name+'</div>'
+      +'<div style="font-size:11px;color:#aaa">Type: '+area.type+'</div>'
+      +(area.depth?'<div style="font-size:12px;color:#00ccff;font-weight:600">Depth: '+area.depth+" ft</div>":'')
+      +'<div style="font-size:10px;font-family:monospace;color:#888;margin-top:4px">'+coords+'</div>';
+    var m = L.marker([lat,lon],{icon:icon,zIndexOffset:500}).addTo(mapInst).bindPopup(popup);
+    fishingMarkers.push(m);
+  });
 }
 
 // ── Ocean Floor Bathymetry ────────────────────────────────────────────────────
@@ -1316,32 +1389,49 @@ function depthColor(ft) {
 }
 
 function loadDepthLabels() {
-  depthMarkers.forEach(function(m){ mapInst.removeLayer(m); });
-  depthMarkers = [];
-
+  if(allDepthPoints.length > 0) { renderDepthMarkers(mapInst.getBounds(), mapInst.getZoom()); return; }
   fetch('/depth-grid')
     .then(function(r){ return r.json(); })
     .then(function(data) {
-      if(!bathyEnabled) return;
-      var pts = data.points || [];
-      console.log('[depth] got '+pts.length+' depth points');
-      pts.forEach(function(pt) {
-        var color = depthColor(pt.depthFt);
-        var html = '<div style="color:'+color+';font-size:10px;font-weight:700;'
-          +'font-family:monospace;background:rgba(0,0,0,0.6);padding:1px 4px;'
-          +'border-radius:3px;border:1px solid '+color+';white-space:nowrap">'
-          +pt.depthFt.toLocaleString()+" ft</div>";
-        var icon = L.divIcon({className:'',html:html,iconSize:[70,16],iconAnchor:[35,8]});
-        var m = L.marker([pt.lat,pt.lon],{icon:icon,zIndexOffset:-200})
-          .addTo(mapInst)
-          .bindPopup('<b>Ocean Depth</b><br>'
-            +'<span style="color:'+color+';font-size:14px;font-weight:700">'
-            +pt.depthFt.toLocaleString()+' ft</span><br>'
-            +'<span style="color:#888">'+(pt.depthFt/3.28084).toFixed(0)+' m</span>');
-        depthMarkers.push(m);
-      });
+      allDepthPoints = data.points || [];
+      console.log('[depth] loaded '+allDepthPoints.length+' points into memory');
+      renderDepthMarkers(mapInst.getBounds(), mapInst.getZoom());
     })
     .catch(function(e){ console.error('[depth] failed:', e); });
+}
+
+function renderDepthMarkers(bounds, zoom) {
+  // Remove all current depth markers
+  depthMarkers.forEach(function(m){ mapInst.removeLayer(m); });
+  depthMarkers = [];
+  if(!bathyEnabled || !allDepthPoints.length) return;
+
+  // How dense to show based on zoom
+  var minSpacing = zoom >= 9 ? 0.1 : zoom >= 7 ? 0.25 : zoom >= 6 ? 0.5 : zoom >= 5 ? 1.0 : 2.0;
+  var shown = {};
+  var count = 0;
+
+  allDepthPoints.forEach(function(pt) {
+    if(!inBounds(pt.lat, pt.lon, bounds)) return;
+    // Deduplicate by grid cell
+    var key = Math.round(pt.lat/minSpacing)+'_'+Math.round(pt.lon/minSpacing);
+    if(shown[key]) return;
+    shown[key] = true;
+    count++;
+    if(count > 300) return; // max 300 labels at once
+
+    var color = depthColor(pt.depthFt);
+    var html = '<div style="color:'+color+';font-size:10px;font-weight:700;font-family:monospace;'
+      +'background:rgba(0,0,0,0.6);padding:1px 4px;border-radius:3px;border:1px solid '
+      +color+';white-space:nowrap">'+pt.depthFt.toLocaleString()+" ft</div>";
+    var icon = L.divIcon({className:'',html:html,iconSize:[70,16],iconAnchor:[35,8]});
+    var m = L.marker([pt.lat,pt.lon],{icon:icon,zIndexOffset:-200})
+      .addTo(mapInst)
+      .bindPopup('<b>Ocean Depth</b><br><span style="color:'+color
+        +';font-size:14px;font-weight:700">'+pt.depthFt.toLocaleString()+' ft</span><br>'
+        +'<span style="color:#888">'+(pt.depthFt/3.28084).toFixed(0)+' m</span>');
+    depthMarkers.push(m);
+  });
 }
 
 </script>
