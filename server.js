@@ -167,6 +167,82 @@ app.get('/sst-grid', (req, res) => {
 // Pre-warm cache on startup
 setTimeout(() => fetchSSTGrid(() => console.log('[sst-grid] pre-warmed')), 5000);
 
+// ── GMRT Bathymetry depth grid (cached 24h) ──────────────────────────────────
+let depthCache = null;
+let depthCacheTime = 0;
+
+app.get('/depth-grid', (req, res) => {
+  const now = Date.now();
+  if (depthCache && (now - depthCacheTime) < 24*60*60*1000) {
+    res.setHeader('Access-Control-Allow-Origin','*');
+    return res.json(depthCache);
+  }
+
+  // GMRT WCS - get depth at a grid of East Coast offshore points
+  // Use a set of hand-picked ocean points since WCS queries are complex
+  const points = [
+    // Continental shelf (shallow)
+    {lat:40.5,lon:-73.5},{lat:39.5,lon:-73.5},{lat:38.5,lon:-74.0},
+    {lat:37.5,lon:-75.0},{lat:36.5,lon:-75.5},{lat:35.5,lon:-75.5},
+    {lat:34.5,lon:-76.5},{lat:33.5,lon:-78.0},{lat:32.5,lon:-79.5},
+    {lat:31.5,lon:-80.5},{lat:30.5,lon:-81.0},{lat:29.0,lon:-80.5},
+    {lat:27.0,lon:-80.0},{lat:25.5,lon:-80.0},
+    // Shelf break
+    {lat:41.0,lon:-68.0},{lat:40.0,lon:-70.0},{lat:39.0,lon:-71.5},
+    {lat:38.0,lon:-72.5},{lat:37.0,lon:-74.0},{lat:36.0,lon:-74.5},
+    {lat:35.0,lon:-75.0},{lat:34.0,lon:-76.0},{lat:33.0,lon:-77.5},
+    {lat:32.0,lon:-79.0},{lat:30.0,lon:-80.0},{lat:28.0,lon:-79.5},
+    // Deep water / Gulf Stream
+    {lat:40.0,lon:-65.0},{lat:39.0,lon:-67.0},{lat:38.0,lon:-69.0},
+    {lat:37.0,lon:-71.0},{lat:36.0,lon:-72.0},{lat:35.0,lon:-73.5},
+    {lat:34.0,lon:-74.5},{lat:33.0,lon:-76.0},{lat:32.0,lon:-77.5},
+    {lat:31.0,lon:-78.5},{lat:30.0,lon:-79.0},{lat:29.0,lon:-79.0},
+    {lat:28.0,lon:-79.5},{lat:27.0,lon:-79.5},{lat:26.0,lon:-79.5},
+    // Abyssal
+    {lat:41.0,lon:-62.0},{lat:39.0,lon:-63.0},{lat:37.0,lon:-65.0},
+    {lat:35.0,lon:-68.0},{lat:33.0,lon:-70.0},{lat:31.0,lon:-74.0},
+    // Georges Bank
+    {lat:41.5,lon:-67.5},{lat:42.0,lon:-67.0},{lat:41.8,lon:-68.5},
+  ];
+
+  // Fetch depths from NOAA GMRT REST API
+  let results = [];
+  let pending = points.length;
+
+  points.forEach(function(pt) {
+    const url = `https://www.gmrt.org/services/PointServer?longitude=${pt.lon}&latitude=${pt.lat}&format=json`;
+    https.get(url, (r) => {
+      let data = '';
+      r.on('data', d => data += d);
+      r.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          const elev = json.altitude || json.depth || (json[0] && json[0].z);
+          if (elev !== undefined && elev !== null) {
+            const depthFt = Math.round(Math.abs(parseFloat(elev)) * 3.28084);
+            if (depthFt > 0) results.push({ lat: pt.lat, lon: pt.lon, depthFt });
+          }
+        } catch(e) {}
+        pending--;
+        if (pending === 0) {
+          depthCache = { points: results };
+          depthCacheTime = Date.now();
+          res.setHeader('Access-Control-Allow-Origin','*');
+          res.json(depthCache);
+        }
+      });
+    }).on('error', () => {
+      pending--;
+      if (pending === 0) {
+        depthCache = { points: results };
+        depthCacheTime = Date.now();
+        res.setHeader('Access-Control-Allow-Origin','*');
+        res.json(depthCache);
+      }
+    });
+  });
+});
+
 // ── NDBC buoy proxy (avoids CORS) ────────────────────────────────────────────
 app.get('/ndbc', (req, res) => {
   const id = (req.query.id || '').replace(/[^a-zA-Z0-9]/g, '');
