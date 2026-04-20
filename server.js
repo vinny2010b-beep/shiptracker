@@ -180,30 +180,33 @@ app.get('/depth-grid', (req, res) => {
 
   // GMRT WCS - get depth at a grid of East Coast offshore points
   // Use a set of hand-picked ocean points since WCS queries are complex
-  const points = [
-    // Continental shelf (shallow)
-    {lat:40.5,lon:-73.5},{lat:39.5,lon:-73.5},{lat:38.5,lon:-74.0},
-    {lat:37.5,lon:-75.0},{lat:36.5,lon:-75.5},{lat:35.5,lon:-75.5},
-    {lat:34.5,lon:-76.5},{lat:33.5,lon:-78.0},{lat:32.5,lon:-79.5},
-    {lat:31.5,lon:-80.5},{lat:30.5,lon:-81.0},{lat:29.0,lon:-80.5},
-    {lat:27.0,lon:-80.0},{lat:25.5,lon:-80.0},
-    // Shelf break
-    {lat:41.0,lon:-68.0},{lat:40.0,lon:-70.0},{lat:39.0,lon:-71.5},
-    {lat:38.0,lon:-72.5},{lat:37.0,lon:-74.0},{lat:36.0,lon:-74.5},
-    {lat:35.0,lon:-75.0},{lat:34.0,lon:-76.0},{lat:33.0,lon:-77.5},
-    {lat:32.0,lon:-79.0},{lat:30.0,lon:-80.0},{lat:28.0,lon:-79.5},
-    // Deep water / Gulf Stream
-    {lat:40.0,lon:-65.0},{lat:39.0,lon:-67.0},{lat:38.0,lon:-69.0},
-    {lat:37.0,lon:-71.0},{lat:36.0,lon:-72.0},{lat:35.0,lon:-73.5},
-    {lat:34.0,lon:-74.5},{lat:33.0,lon:-76.0},{lat:32.0,lon:-77.5},
-    {lat:31.0,lon:-78.5},{lat:30.0,lon:-79.0},{lat:29.0,lon:-79.0},
-    {lat:28.0,lon:-79.5},{lat:27.0,lon:-79.5},{lat:26.0,lon:-79.5},
-    // Abyssal
-    {lat:41.0,lon:-62.0},{lat:39.0,lon:-63.0},{lat:37.0,lon:-65.0},
-    {lat:35.0,lon:-68.0},{lat:33.0,lon:-70.0},{lat:31.0,lon:-74.0},
-    // Georges Bank
-    {lat:41.5,lon:-67.5},{lat:42.0,lon:-67.0},{lat:41.8,lon:-68.5},
-  ];
+  // Generate a dense grid covering East Coast + offshore
+  const points = [];
+  // 1-degree grid from 24N to 47N, 60W to 82W (ocean only - rough check)
+  for (let lat = 24.5; lat <= 47; lat += 1.0) {
+    for (let lon = -81.5; lon <= -60; lon += 1.0) {
+      // Skip obvious inland areas
+      if (lon > -75 && lat > 40 && lat < 45) continue; // New England inland
+      if (lon > -77 && lat > 37 && lat < 41) continue; // Mid-Atlantic inland
+      if (lon > -79 && lat > 35 && lat < 38) continue; // VA/NC inland
+      if (lon > -80 && lat > 32 && lat < 36) continue; // SC/NC inland
+      if (lon > -81 && lat > 29 && lat < 33) continue; // GA/SC inland
+      if (lon > -81 && lat > 25 && lat < 30) {
+        if (lon > -80.5) continue; // FL inland
+      }
+      points.push({ lat: Math.round(lat*10)/10, lon: Math.round(lon*10)/10 });
+    }
+  }
+  // Also add a 0.5-degree grid for the key offshore zone (shelf to Gulf Stream)
+  for (let lat = 25; lat <= 46; lat += 0.5) {
+    for (let lon = -79; lon <= -63; lon += 0.5) {
+      // Only add points not already covered by 1-degree grid
+      if (lat % 1 === 0.5 || lon % 1 === 0.5) {
+        points.push({ lat: Math.round(lat*10)/10, lon: Math.round(lon*10)/10 });
+      }
+    }
+  }
+  console.log('[depth-grid] fetching', points.length, 'depth points');
 
   // Fetch depths from NOAA GMRT REST API
   let results = [];
@@ -266,6 +269,32 @@ app.get('/depth-grid', (req, res) => {
     }
   }
   next();
+});
+
+// ── Single depth point lookup ────────────────────────────────────────────────
+app.get('/depth', (req, res) => {
+  const lat = parseFloat(req.query.lat);
+  const lon = parseFloat(req.query.lon);
+  if (isNaN(lat) || isNaN(lon)) { res.json({ error: 'bad params' }); return; }
+  const url = `https://coastwatch.pfeg.noaa.gov/erddap/griddap/etopo180.json?altitude%5B(${lat})%5D%5B(${lon})%5D`;
+  const req2 = https.get(url, (r) => {
+    let data = '';
+    r.on('data', d => data += d);
+    r.on('end', () => {
+      try {
+        if (!data.startsWith('{')) { res.json({ depthFt: null }); return; }
+        const json = JSON.parse(data);
+        const rows = json.table && json.table.rows;
+        const elev = rows && rows[0] && parseFloat(rows[0][2]);
+        if (isNaN(elev) || elev >= 0) { res.json({ depthFt: null }); return; }
+        const depthFt = Math.round(Math.abs(elev) * 3.28084);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.json({ depthFt, depthM: Math.round(Math.abs(elev)) });
+      } catch(e) { res.json({ depthFt: null }); }
+    });
+  });
+  req2.setTimeout(8000, () => { req2.destroy(); res.json({ depthFt: null }); });
+  req2.on('error', () => res.json({ depthFt: null }));
 });
 
 // ── NDBC buoy proxy (avoids CORS) ────────────────────────────────────────────
