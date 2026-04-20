@@ -108,8 +108,7 @@ app.get('/sst-grid', (req, res) => {
     r.on('end', () => {
       try {
         // Parse CSV: time,lat,lon,analysed_sst
-        const lines  = data.trim().split('
-');
+        const lines  = data.trim().split('\n');
         const points = [];
         for (let i = 2; i < lines.length; i++) { // skip 2 header rows
           const cols = lines[i].split(',');
