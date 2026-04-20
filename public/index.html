@@ -119,7 +119,7 @@ tr.selected td{background:rgba(29,158,117,.12)}
 </div>
 <div id="dashboard">
   <div class="topbar">
-    <span class="topbar-logo">⚓ AIS Tracker</span><span style="font-size:10px;color:#444;font-family:monospace;margin-left:4px">v2.2</span>
+    <span class="topbar-logo">⚓ AIS Tracker</span><span style="font-size:10px;color:#444;font-family:monospace;margin-left:4px">v2.4</span>
     <span class="topbar-region" id="topbar-region"></span>
     <div class="topbar-spacer"></div>
     <div class="stat-pill"><div class="pulse" id="pulse-dot" style="display:none"></div><span class="val" id="st-vessels">0</span><span class="lbl">vessels</span></div>
@@ -181,7 +181,7 @@ function startSSE(){
     setStatus('live','live');
     var pd=document.getElementById('pulse-dot');if(pd)pd.style.display='inline-block';
     // Send subscription — server injects the API key
-    ws.send(JSON.stringify({BoundingBoxes:[selBBox],FilterMessageTypes:['PositionReport','StandardClassBPositionReport','ExtendedClassBPositionReport','ShipStaticData']}));
+    ws.send(JSON.stringify({BoundingBoxes:[selBBox],FilterMessageTypes:['PositionReport','StandardClassBPositionReport','ShipStaticData']}));
     hideApiErr();
   };
 
@@ -201,7 +201,7 @@ function startSSE(){
         setStatus('live',sm[msg._status]||msg._status);
         // Resend subscription whenever upstream reconnects
         if(msg._status==='upstream_connected'&&ws&&ws.readyState===WebSocket.OPEN){
-          ws.send(JSON.stringify({BoundingBoxes:[selBBox],FilterMessageTypes:['PositionReport','StandardClassBPositionReport','ExtendedClassBPositionReport','ShipStaticData']}));
+          ws.send(JSON.stringify({BoundingBoxes:[selBBox],FilterMessageTypes:['PositionReport','StandardClassBPositionReport','ShipStaticData']}));
           console.log('Subscription resent after upstream connect');
         }
         if(msg._status==='upstream_error'||msg._status==='upstream_closed'){showApiErr('Server: '+msg._status+(msg.msg?' — '+msg.msg:''));}
@@ -325,8 +325,6 @@ function handleMsg(msg){
 
   var meta=msg.MetaData||{};
   var mmsi=meta.MMSI;
-  // Log first 3 messages to console
-  if(msgCount<=3){console.log('MSG#'+msgCount,JSON.stringify(msg).substring(0,300));}
   if(!mmsi)return;
 
   if(!vessels[mmsi])vessels[mmsi]={mmsi:mmsi,updated:Date.now()};
@@ -379,6 +377,18 @@ function handleMsg(msg){
     if(sd.Dimension)v.dim=sd.Dimension;
     if(sd.Name&&sd.Name.trim())v.name=sd.Name.trim();
     if(sd.CallSign)v.callsign=sd.CallSign.trim();
+  }
+
+  // Filter excluded vessel types from map
+  if(v.type){
+    var t=v.type;
+    var excluded=(t===33||t===34||t===31||t===32||t===54)||(t>=20&&t<=29)||(t>=40&&t<=49)||(t>=70&&t<=79)||(t>=80&&t<=89);
+    if(excluded){
+      // Remove from map if already plotted
+      if(markers[mmsi]){mapInst.removeLayer(markers[mmsi]);delete markers[mmsi];}
+      delete vessels[mmsi];
+      return;
+    }
   }
 
   if(v.lat!=null&&v.lon!=null){
