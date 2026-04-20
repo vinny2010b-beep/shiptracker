@@ -169,7 +169,7 @@ setTimeout(() => fetchSSTGrid(() => console.log('[sst-grid] pre-warmed')), 5000)
 
 // ── GMRT Bathymetry depth grid (cached 24h) ──────────────────────────────────
 let depthCache = null;
-let depthCacheTime = 0;
+let depthCacheTime = 0; // v2 - ETOPO endpoint
 
 app.get('/depth-grid', (req, res) => {
   const now = Date.now();
@@ -209,38 +209,63 @@ app.get('/depth-grid', (req, res) => {
   let results = [];
   let pending = points.length;
 
-  points.forEach(function(pt) {
-    const url = `https://www.gmrt.org/services/PointServer?longitude=${pt.lon}&latitude=${pt.lat}&format=json`;
-    https.get(url, (r) => {
+  // Use NOAA NCEI REST API for bathymetry points
+  // Format: https://maps.ngdc.noaa.gov/arcgis/rest/services/web_mercator/multibeam_dynamic/MapServer/identify
+  // Simpler: use Open-Elevation or ETOPO dataset via a direct CSV fetch from ERDDAP
+  // ETOPO 2022 on ERDDAP - works for ocean depths
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - 1); // ETOPO is static, use any date
+  
+  // Build a batch URL fetching all points as a CSV from ERDDAP ETOPO dataset
+  // Use NOAA ETOPO 2022 - 15 arc second global relief
+  const fetchDepthPoint = (pt, cb) => {
+    const url = `https://coastwatch.pfeg.noaa.gov/erddap/griddap/etopo180.json?altitude%5B(${pt.lat})%5D%5B(${pt.lon})%5D`;
+    const req = https.get(url, (r) => {
       let data = '';
       r.on('data', d => data += d);
       r.on('end', () => {
         try {
+          if (!data.startsWith('{')) return cb(null);
           const json = JSON.parse(data);
-          const elev = json.altitude || json.depth || (json[0] && json[0].z);
-          if (elev !== undefined && elev !== null) {
-            const depthFt = Math.round(Math.abs(parseFloat(elev)) * 3.28084);
-            if (depthFt > 0) results.push({ lat: pt.lat, lon: pt.lon, depthFt });
-          }
-        } catch(e) {}
+          const rows = json.table && json.table.rows;
+          if (!rows || !rows[0]) return cb(null);
+          const elev = parseFloat(rows[0][2]); // altitude column
+          if (isNaN(elev) || elev >= 0) return cb(null); // skip land (positive = above sea)
+          const depthFt = Math.round(Math.abs(elev) * 3.28084);
+          cb({ lat: pt.lat, lon: pt.lon, depthFt });
+        } catch(e) { cb(null); }
+      });
+    });
+    req.setTimeout(8000, () => { req.destroy(); cb(null); });
+    req.on('error', () => cb(null));
+  };
+
+  // Fetch all points with concurrency limit of 5
+  let idx = 0;
+  let active = 0;
+  const concurrency = 5;
+
+  function next() {
+    while (active < concurrency && idx < points.length) {
+      const pt = points[idx++];
+      active++;
+      fetchDepthPoint(pt, (result) => {
+        if (result) results.push(result);
+        active--;
         pending--;
         if (pending === 0) {
+          console.log('[depth-grid] got', results.length, 'depth points');
           depthCache = { points: results };
           depthCacheTime = Date.now();
           res.setHeader('Access-Control-Allow-Origin','*');
           res.json(depthCache);
+        } else {
+          next();
         }
       });
-    }).on('error', () => {
-      pending--;
-      if (pending === 0) {
-        depthCache = { points: results };
-        depthCacheTime = Date.now();
-        res.setHeader('Access-Control-Allow-Origin','*');
-        res.json(depthCache);
-      }
-    });
-  });
+    }
+  }
+  next();
 });
 
 // ── NDBC buoy proxy (avoids CORS) ────────────────────────────────────────────
